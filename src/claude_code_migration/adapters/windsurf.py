@@ -45,7 +45,8 @@ class WindsurfAdapter(Adapter):
 
         # 4. MCP config (Windsurf uses serverUrl for remote)
         servers: dict[str, Any] = {}
-        for name, srv in (scan.get("mcp_servers_global") or {}).items():
+
+        def _convert(name: str, srv: dict[str, Any], prefix: str) -> None:
             if srv.get("url"):
                 cfg: dict[str, Any] = {
                     "serverUrl": srv["url"],  # Windsurf-specific
@@ -67,7 +68,12 @@ class WindsurfAdapter(Adapter):
                 }
                 if srv.get("env"):
                     cfg["env"] = {k: "${env:" + k + "}" for k in srv["env"]}
-            servers[f"cc-{name}"] = cfg
+            servers[f"{prefix}{name}"] = cfg
+
+        for name, srv in (scan.get("mcp_servers_global") or {}).items():
+            _convert(name, srv, "cc-")
+        for name, srv in (scan.get("mcp_servers_project") or {}).items():
+            _convert(name, srv, "cc-proj-")
 
         if servers:
             mcp_dir = ensure_dir(out_dir / ".codeium" / "windsurf")

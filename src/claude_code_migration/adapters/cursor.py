@@ -78,9 +78,10 @@ class CursorAdapter(Adapter):
             path.write_text(rule, encoding="utf-8")
             r.files_written.append(str(path))
 
-        # 5. .cursor/mcp.json (project-level)
+        # 5. .cursor/mcp.json — merge global + project-level MCP
         servers: dict[str, Any] = {}
-        for name, srv in (scan.get("mcp_servers_global") or {}).items():
+
+        def _convert(name: str, srv: dict[str, Any], prefix: str) -> None:
             if srv.get("url"):
                 cfg: dict[str, Any] = {"url": srv["url"]}
                 if srv.get("headers"):
@@ -103,7 +104,12 @@ class CursorAdapter(Adapter):
                     cfg["env"] = {k: "${env:" + k + "}" for k in srv["env"]}
                     for k in srv["env"]:
                         r.env_vars_needed[k] = f"From {name} mcpServer env"
-            servers[f"cc-{name}"] = cfg
+            servers[f"{prefix}{name}"] = cfg
+
+        for name, srv in (scan.get("mcp_servers_global") or {}).items():
+            _convert(name, srv, "cc-")
+        for name, srv in (scan.get("mcp_servers_project") or {}).items():
+            _convert(name, srv, "cc-proj-")
 
         if servers:
             mcp_path = target_root / ".cursor" / "mcp.json"
