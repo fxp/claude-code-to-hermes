@@ -46,10 +46,32 @@ class HermesAdapter(Adapter):
             '  enable_compression: true\n'
             '  compression_threshold: 0.5\n'
         )
+        # Append plugin-bundled MCP servers as "mcp_servers" section
+        plugins = scan.get("plugins") or []
+        plugin_mcp_lines: list[str] = []
+        for p in plugins:
+            for mname, msrv in (p.get("mcp_servers") or {}).items():
+                if msrv.get("url"):
+                    plugin_mcp_lines.append(f'  "cc-plugin-{p["plugin_name"]}-{mname}":')
+                    plugin_mcp_lines.append(f'    url: "{msrv["url"]}"')
+                    plugin_mcp_lines.append(f'    transport: "http"')
+        if plugin_mcp_lines:
+            config_yaml += '\n# Plugin-bundled MCP servers (migrated from Claude Code plugins)\nmcp_servers:\n' + \
+                           '\n'.join(plugin_mcp_lines) + '\n'
+
         cfg_path = hermes_root / "config.yaml"
         cfg_path.write_text(config_yaml, encoding="utf-8")
         r.files_written.append(str(cfg_path))
         r.env_vars_needed["OPENAI_API_KEY"] = "BigModel/GLM API key from https://open.bigmodel.cn/"
+
+        # Org metadata (Cowork) → identity comment in config
+        org = scan.get("org")
+        if org and org.get("organization_name"):
+            r.warnings.append(
+                f"Cowork org detected: {org['organization_name']} "
+                f"(role: {org.get('organization_role', '?')}, billing: {org.get('billing_type', '?')}). "
+                "Plugin inventory preserved."
+            )
 
         # 2. memories/USER.md — from home CLAUDE.md or user profile memory
         user_content = scan.get("home_claude_md") or ""
@@ -88,7 +110,9 @@ class HermesAdapter(Adapter):
                 r.files_written.append(str(project_dir / ".hermes.md"))
 
         # 5. Skills → ~/.hermes/skills/cc-{name}/SKILL.md (Hermes format)
-        for skill in (scan.get("skills_global") or [])[:100]:
+        # Merge global skills + plugin-bundled skills (Cowork plugin system)
+        all_skills = list(scan.get("skills_global") or []) + list(scan.get("plugins_skills") or [])
+        for skill in all_skills[:200]:
             sd = ensure_dir(skills / f"cc-{skill['name']}")
             fm = f"""---
 name: cc-{skill['name']}

@@ -129,6 +129,37 @@ def build_universal_agents_md(scan: dict[str, Any], header_note: str = "") -> st
                      "\n".join(f"- **{s.get('name')}**: {(s.get('description') or '')[:150]}"
                                for s in skills_proj))
 
+    # Cowork org metadata
+    org = scan.get("org") or {}
+    if org and (org.get("organization_name") or org.get("organization_role")):
+        org_lines = []
+        if org.get("organization_name"):
+            org_lines.append(f"- **Organization**: {org['organization_name']}")
+        if org.get("organization_role"):
+            org_lines.append(f"- **Role**: {org['organization_role']}")
+        if org.get("workspace_role") and org["workspace_role"] != "None":
+            org_lines.append(f"- **Workspace role**: {org['workspace_role']}")
+        if org.get("billing_type"):
+            org_lines.append(f"- **Billing**: {org['billing_type']}")
+        if org_lines:
+            parts.append("## Cowork Organization\n\n" + "\n".join(org_lines))
+
+    # Installed plugins (Cowork plugin system) — each plugin may bundle MCP + skills
+    plugins = scan.get("plugins") or []
+    if plugins:
+        plug_lines = []
+        for p in plugins:
+            pid = p.get("id") or p.get("plugin_name")
+            ver = p.get("version") or ""
+            n_mcp = len(p.get("mcp_servers") or {})
+            n_skills = len(p.get("skill_names") or [])
+            bits = [f"v{ver}"] if ver and ver != "unknown" else []
+            if n_mcp: bits.append(f"{n_mcp} MCP")
+            if n_skills: bits.append(f"{n_skills} skills")
+            suffix = f" ({', '.join(bits)})" if bits else ""
+            plug_lines.append(f"- **{pid}**{suffix}")
+        parts.append("## Installed Plugins (Cowork)\n\n" + "\n".join(plug_lines))
+
     # Last resort: if we still have nothing substantial, add project metadata
     body = "\n\n".join(p for p in parts if p.strip())
     if len(body) < 200 and scan.get("project_dir"):

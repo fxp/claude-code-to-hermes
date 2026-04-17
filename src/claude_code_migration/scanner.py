@@ -100,6 +100,64 @@ class McpServer:
 
 
 @dataclass
+class PluginInstall:
+    """A plugin installed via Claude Code plugin marketplace (Cowork feature).
+
+    Each plugin CAN bundle its own MCP servers and skills. These live at
+    ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/
+    """
+    id: str                              # e.g. "figma@claude-plugins-official"
+    plugin_name: str                     # e.g. "figma"
+    marketplace: str                     # e.g. "claude-plugins-official"
+    version: str
+    install_path: str
+    scope: str                           # user | project | local
+    installed_at: str
+    last_updated: str
+    git_commit_sha: str | None
+    # Plugin definition from .claude-plugin/plugin.json
+    manifest: dict[str, Any] = field(default_factory=dict)
+    # Bundled MCP servers from <plugin>/.mcp.json
+    mcp_servers: dict[str, McpServer] = field(default_factory=dict)
+    # Bundled skills from <plugin>/skills/*/SKILL.md (name only, full body in skills_from_plugins)
+    skill_names: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Marketplace:
+    """A plugin marketplace known to this Claude Code install (~/.claude/plugins/known_marketplaces.json)."""
+    name: str                            # e.g. "claude-plugins-official"
+    source_type: str                     # github | url | git-subdir | npm | path
+    source_spec: dict[str, Any]          # repo / url / package depending on source_type
+    install_location: str
+    last_updated: str
+    manifest: dict[str, Any] = field(default_factory=dict)  # marketplace.json contents
+
+
+@dataclass
+class OrgMetadata:
+    """Claude Cowork org info from ~/.claude.json oauthAccount.
+
+    When organizationRole is 'admin' or 'owner', and billingType is 'team_plan'
+    or 'enterprise_plan', this is a Cowork account.
+    """
+    account_uuid: str | None = None
+    organization_uuid: str | None = None
+    organization_name: str | None = None
+    organization_role: str | None = None       # admin | member | owner | None
+    workspace_role: str | None = None          # Cowork workspace role
+    billing_type: str | None = None            # apple_subscription | team_plan | enterprise_plan
+    has_extra_usage_enabled: bool = False
+    email_address: str | None = None
+    display_name: str | None = None
+
+    @property
+    def is_cowork(self) -> bool:
+        return bool(self.organization_role and self.organization_role != "None") or \
+               (self.billing_type or "") in ("team_plan", "enterprise_plan")
+
+
+@dataclass
 class ClaudeScan:
     timestamp: str
     claude_home: str
@@ -128,7 +186,11 @@ class ClaudeScan:
     launch_json: dict[str, Any] | None = None
     plans: list[dict[str, str]] = field(default_factory=list)
     todos: list[dict[str, Any]] = field(default_factory=list)
-    plugins_installed: dict[str, Any] | None = None
+    plugins_installed: dict[str, Any] | None = None  # raw installed_plugins.json (for reference)
+    plugins: list[PluginInstall] = field(default_factory=list)  # structured inventory
+    plugins_skills: list[SkillDef] = field(default_factory=list)  # skills bundled in installed plugins
+    marketplaces: list[Marketplace] = field(default_factory=list)
+    org: OrgMetadata | None = None
     history_count: int = 0
     worktreeinclude: list[str] = field(default_factory=list)
 
@@ -258,6 +320,21 @@ def scan_claude_code(
             if isinstance(cfg, dict):
                 scan.mcp_servers_global[name] = _parse_mcp_server(name, cfg)
 
+        # oauthAccount → OrgMetadata (Cowork indicator)
+        oauth = d.get("oauthAccount") or {}
+        if oauth:
+            scan.org = OrgMetadata(
+                account_uuid=oauth.get("accountUuid"),
+                organization_uuid=oauth.get("organizationUuid"),
+                organization_name=oauth.get("organizationName"),
+                organization_role=oauth.get("organizationRole"),
+                workspace_role=oauth.get("workspaceRole"),
+                billing_type=oauth.get("billingType"),
+                has_extra_usage_enabled=bool(oauth.get("hasExtraUsageEnabled")),
+                email_address=oauth.get("emailAddress"),
+                display_name=oauth.get("displayName"),
+            )
+
     # ~/.claude/CLAUDE.md
     scan.home_claude_md = _read_safe(claude_home / "CLAUDE.md")
 
@@ -283,10 +360,12 @@ def scan_claude_code(
             except Exception:
                 pass
 
-    # Plugins list
-    plugins_file = claude_home / "plugins" / "installed_plugins.json"
+    # Plugin inventory (Cowork feature) — walk plugins/, marketplaces/, cache/
+    plugins_dir = claude_home / "plugins"
+    plugins_file = plugins_dir / "installed_plugins.json"
     if plugins_file.exists():
         scan.plugins_installed = _load_json_safe(plugins_file)
+        _scan_plugins(plugins_dir, scan)
 
     # history.jsonl (count only)
     hist = claude_home / "history.jsonl"
@@ -425,6 +504,90 @@ def scan_claude_code(
                     ))
 
     return scan
+
+
+def _scan_plugins(plugins_dir: Path, scan: ClaudeScan) -> None:
+    """Walk ~/.claude/plugins/ and populate scan.plugins / scan.marketplaces /
+    scan.plugins_skills. Each installed plugin may bundle its own MCP servers
+    and skills — these are the "Cowork plugin system" data that's otherwise
+    lost if you only look at installed_plugins.json.
+    """
+    # known_marketplaces.json
+    km_file = plugins_dir / "known_marketplaces.json"
+    km = _load_json_safe(km_file) if km_file.exists() else {}
+    for mp_name, mp_cfg in km.items():
+        if not isinstance(mp_cfg, dict):
+            continue
+        src = mp_cfg.get("source") or {}
+        mp = Marketplace(
+            name=mp_name,
+            source_type=str(src.get("source", "unknown")),
+            source_spec={k: v for k, v in src.items() if k != "source"},
+            install_location=str(mp_cfg.get("installLocation", "")),
+            last_updated=str(mp_cfg.get("lastUpdated", "")),
+        )
+        # Load marketplace.json if installed
+        mp_manifest = Path(mp.install_location) / ".claude-plugin" / "marketplace.json"
+        if mp_manifest.exists():
+            mp.manifest = _load_json_safe(mp_manifest)
+        scan.marketplaces.append(mp)
+
+    # installed_plugins.json → PluginInstall records
+    installed = scan.plugins_installed or {}
+    for plugin_id, installs in (installed.get("plugins") or {}).items():
+        if not isinstance(installs, list):
+            continue
+        # plugin_id is "<name>@<marketplace>"
+        if "@" in plugin_id:
+            plugin_name, marketplace = plugin_id.split("@", 1)
+        else:
+            plugin_name, marketplace = plugin_id, "unknown"
+        for inst in installs:
+            if not isinstance(inst, dict):
+                continue
+            install_path = Path(inst.get("installPath", ""))
+            p = PluginInstall(
+                id=plugin_id,
+                plugin_name=plugin_name,
+                marketplace=marketplace,
+                version=str(inst.get("version", "unknown")),
+                install_path=str(install_path),
+                scope=str(inst.get("scope", "user")),
+                installed_at=str(inst.get("installedAt", "")),
+                last_updated=str(inst.get("lastUpdated", "")),
+                git_commit_sha=inst.get("gitCommitSha"),
+            )
+
+            if install_path.is_dir():
+                # plugin.json manifest (try .claude-plugin/ first, fall back to root)
+                for cand in (
+                    install_path / ".claude-plugin" / "plugin.json",
+                    install_path / ".cursor-plugin" / "plugin.json",
+                    install_path / "plugin.json",
+                ):
+                    if cand.exists():
+                        p.manifest = _load_json_safe(cand)
+                        break
+
+                # Plugin-bundled MCP servers (from .mcp.json)
+                mcp_file = install_path / ".mcp.json"
+                if mcp_file.exists():
+                    d = _load_json_safe(mcp_file)
+                    for name, cfg in (d.get("mcpServers") or {}).items():
+                        if isinstance(cfg, dict):
+                            p.mcp_servers[name] = _parse_mcp_server(name, cfg)
+
+                # Plugin-bundled skills
+                skills_dir = install_path / "skills"
+                if skills_dir.is_dir():
+                    for sub in skills_dir.iterdir():
+                        if sub.is_dir():
+                            s = _scan_skill_dir(sub, f"{plugin_name}:{sub.name}")
+                            if s:
+                                p.skill_names.append(s.name)
+                                scan.plugins_skills.append(s)
+
+            scan.plugins.append(p)
 
 
 def save_scan(scan: ClaudeScan, out_path: str | Path) -> None:

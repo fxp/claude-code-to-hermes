@@ -74,6 +74,10 @@ class WindsurfAdapter(Adapter):
             _convert(name, srv, "cc-")
         for name, srv in (scan.get("mcp_servers_project") or {}).items():
             _convert(name, srv, "cc-proj-")
+        # Plugin-bundled MCPs (Cowork plugin system)
+        for p in (scan.get("plugins") or []):
+            for mname, msrv in (p.get("mcp_servers") or {}).items():
+                _convert(f"{p['plugin_name']}-{mname}", msrv, "cc-plugin-")
 
         if servers:
             mcp_dir = ensure_dir(out_dir / ".codeium" / "windsurf")

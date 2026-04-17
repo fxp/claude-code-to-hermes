@@ -104,6 +104,33 @@ class OpenCodeAdapter(Adapter):
                         "enabled": True,
                     }
 
+        # Plugin-bundled MCP servers (from ~/.claude/plugins/cache/*/*/*/.mcp.json)
+        # This is Cowork plugin data — each installed plugin can bring its own MCP.
+        for p in (scan.get("plugins") or []):
+            for mname, msrv in (p.get("mcp_servers") or {}).items():
+                key = f"cc-plugin-{p['plugin_name']}-{mname}"
+                if msrv.get("url"):
+                    entry: dict[str, Any] = {
+                        "type": "remote", "url": msrv["url"], "enabled": True,
+                    }
+                    hdrs = msrv.get("headers") or {}
+                    if hdrs:
+                        clean: dict[str, str] = {}
+                        for k, v in hdrs.items():
+                            if "auth" in k.lower() or "bearer" in str(v).lower() or "token" in k.lower():
+                                env_var = f"CC_PLUGIN_{p['plugin_name'].upper()}_{mname.upper()}_TOKEN"
+                                clean[k] = "Bearer {env:" + env_var + "}"
+                                r.env_vars_needed[env_var] = f"From plugin {p['plugin_name']} MCP {mname}"
+                            else:
+                                clean[k] = v
+                        entry["headers"] = clean
+                    opencode_cfg["mcp"][key] = entry
+                elif msrv.get("command"):
+                    cmd = [msrv.get("command")] + list(msrv.get("args") or [])
+                    opencode_cfg["mcp"][key] = {
+                        "type": "local", "command": cmd, "enabled": True,
+                    }
+
         # Write global config
         cfg_path.write_text(json.dumps(opencode_cfg, indent=2, ensure_ascii=False), encoding="utf-8")
         r.files_written.append(str(cfg_path))
@@ -127,13 +154,21 @@ class OpenCodeAdapter(Adapter):
 
         # 3. Copy skills into ~/.config/opencode/skills/cc-*
         skills_out = ensure_dir(out_dir / ".config" / "opencode" / "skills")
-        for skill in (scan.get("skills_global") or []):
-            skill_dir = ensure_dir(skills_out / f"cc-{skill['name']}")
+        # Merge global skills + plugin-bundled skills (Cowork)
+        all_skills = list(scan.get("skills_global") or []) + list(scan.get("plugins_skills") or [])
+        for skill in all_skills:
+            # Plugin skills already have "plugin:skill" names — normalize
+            raw_name = str(skill.get('name', 'unknown')).replace(':', '-')
+            skill_dir = ensure_dir(skills_out / f"cc-{raw_name}")
             skill_md = skill_dir / "SKILL.md"
             # Rebuild frontmatter to match OpenCode requirements
+            # OpenCode name regex: ^[a-z0-9]+(-[a-z0-9]+)*$
+            safe_name = f"cc-{raw_name}".lower()
+            import re as _re
+            safe_name = _re.sub(r"[^a-z0-9-]", "-", safe_name)[:64].strip("-")
             fm = {
-                "name": f"cc-{skill['name']}"[:64].lower(),
-                "description": (skill.get("description") or f"Migrated from Claude Code skill {skill['name']}")[:1024],
+                "name": safe_name,
+                "description": (skill.get("description") or f"Migrated from Claude Code skill {raw_name}")[:1024],
             }
             fm_text = "---\n" + "\n".join(f"{k}: {v}" for k, v in fm.items()) + "\n---\n\n"
             skill_md.write_text(fm_text + (skill.get("body") or ""), encoding="utf-8")
