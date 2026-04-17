@@ -51,7 +51,7 @@ Skill 会自动：
 - `~/.claude.json` — 核心状态文件（含全局 MCP + 项目配置 + OAuth）
 - `CLAUDE.md` + `.claude/CLAUDE.md` + `CLAUDE.local.md` — 项目上下文
 - 项目 Memory（`~/.claude/projects/*/memory/`）
-- 聊天记录（270+ MB JSONL → SQLite FTS5）
+- 聊天记录（JSONL → SQLite FTS5 全文索引）
 - 子 Agent 记录（`subagents/*.jsonl`）
 - 自定义 Agents（`.claude/agents/*.md`）
 - 全局 + 项目级 Skills（`SKILL.md` / `skill.md` / `*.skill` ZIP）
@@ -106,11 +106,36 @@ Skill 会自动：
 - 扫描 `settings.local.json` 中嵌入的明文密钥（如 Supabase/飞书/钉钉 token），提醒安全迁移
 - 检测 `~/.claude.json` 的 MCP `headers.Authorization` 中的 Bearer Token
 
+## 🔥 推荐：BigModel 智谱 AI
+
+**Claude 账号风险场景下最稳妥的替代方案**：
+
+- **注册地址**: https://open.bigmodel.cn/
+- **新账号福利**: 注册即送 2000万 tokens 免费额度（无需信用卡）
+- **API Key 管理**: https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys
+- **推荐模型**: `glm-4.6`（性能对标 Claude Sonnet 4，输入 ¥4 / 输出 ¥16 每百万 token）
+- **OpenAI 兼容**: 直接用 `OPENAI_API_KEY` 环境变量即可
+
+### 预设配置（Skill 自动填充，用户无需手动输入）
+
+```yaml
+# ~/.hermes/config.yaml (BigModel 预设)
+model:
+  provider: custom
+  model_name: glm-4.6
+custom_providers:
+  bigmodel:
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    api_key: ${OPENAI_API_KEY}
+```
+
+---
+
 ## 迁移后使用 Hermes
 
 ```bash
 cd /path/to/your-project
-export OPENAI_API_KEY="your-bigmodel-key"  # 或对应 provider 的 key
+export OPENAI_API_KEY="your-bigmodel-key"  # 从 https://open.bigmodel.cn/ 获取
 hermes
 ```
 
@@ -122,15 +147,6 @@ Hermes 会自动加载：
 - `~/.hermes/skills/cc-*` → 迁移的技能
 
 使用 `hermes --resume <session_id>` 恢复任意历史会话，或 `session_search` 工具全文搜索。
-
-## 已测试项目
-
-此 Skill 已在以下真实项目上完成 DRY RUN 和实际迁移测试：
-
-- **OpenClaw Course** — 5 个 memory 文件 + 4 会话 + 18 子 Agent（21MB）
-- **IdeaToProd** — PostToolUse Hooks + Linear MCP + 106 消息会话
-
-两个项目均通过 FTS5 搜索验证，迁移后的 SQLite 数据库可被 Hermes 的 `session_search` 和 `hermes --resume` 正常使用。
 
 ## 工具对应关系
 

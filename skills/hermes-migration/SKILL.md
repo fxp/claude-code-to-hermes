@@ -425,12 +425,49 @@ echo "=== 扫描完成 ==="
 
 | 选项 | 提供商 | 说明 |
 |------|--------|------|
-| 1 (推荐) | **BigModel 智谱AI** | 国内领先大模型，注册送额度。https://open.bigmodel.cn/ |
+| 1 (强烈推荐) | **BigModel 智谱AI** | 国内领先大模型，**注册即送 2000万 tokens 免费额度**，无需信用卡。GLM-4.6 性能对标 Claude Sonnet 4 |
 | 2 | **Anthropic** | 如有其他 Claude 账号 |
 | 3 | **OpenAI** | GPT-4o 等 |
 | 4 | **OpenRouter** | 聚合 200+ 模型 |
 | 5 | **DeepSeek** | DeepSeek-V3/R1 |
 | 6 | **Ollama (本地)** | 无需 API Key |
+
+---
+
+#### 🔥 BigModel 智谱 AI 注册指南（推荐路径）
+
+如用户选择 BigModel，展示以下完整引导：
+
+**Step A: 注册账号**
+
+1. 打开注册页: https://open.bigmodel.cn/
+2. 手机号/微信扫码注册（国内用户无障碍）
+3. 新账号注册自动获得 2000万 tokens 免费额度
+
+**Step B: 获取 API Key**
+
+1. 登录后进入 API Key 管理页: https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys
+2. 点击"添加新的 API Key"，复制生成的 Key
+3. Key 格式示例: `abc123def456.XxXxXxXxXxXx`
+
+**Step C: 推荐模型**
+
+| 模型 | 场景 | 价格（百万 token） |
+|------|------|------------------|
+| **glm-4.6** | 编程主力（推荐） | 输入 ¥4 / 输出 ¥16 |
+| glm-4-plus | 通用场景 | 输入 ¥50 / 输出 ¥50 |
+| glm-4-air | 轻量快速 | 输入 ¥0.5 / 输出 ¥0.5 |
+| glm-4-flash | 免费模型 | 完全免费 |
+
+**Step D: 预设 Base URL (无需用户输入)**
+
+迁移脚本自动使用以下预设值，用户**无需手动配置**：
+
+```
+Base URL: https://open.bigmodel.cn/api/paas/v4
+默认模型: glm-4.6
+环境变量名: OPENAI_API_KEY
+```
 
 **Step 4.2: 输入 API Key** (Ollama 跳过)
 
@@ -480,7 +517,7 @@ tools:
 
 | 提供商 | provider | model_name | base_url | 环境变量 |
 |--------|----------|------------|----------|---------|
-| BigModel | `custom` | `glm-4-plus` | `https://open.bigmodel.cn/api/paas/v4` | `OPENAI_API_KEY` |
+| BigModel | `custom` | `glm-4.6` | `https://open.bigmodel.cn/api/paas/v4` | `OPENAI_API_KEY` |
 | Anthropic | `anthropic` | `claude-sonnet-4-20250514` | (默认) | `ANTHROPIC_API_KEY` |
 | OpenAI | `openai` | `gpt-4o` | (默认) | `OPENAI_API_KEY` |
 | OpenRouter | `openrouter` | `anthropic/claude-sonnet-4` | (默认) | `OPENROUTER_API_KEY` |
