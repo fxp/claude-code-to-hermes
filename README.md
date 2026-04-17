@@ -14,15 +14,25 @@
 
 Claude 账号风控收紧，担心积累的对话/项目/技能丢失？这个仓库提供 4 个互相协作的 Claude Code Skill，覆盖 Claude 生态的三个产品线，并通过 [neuDrive](https://github.com/agi-bar/neuDrive) 作为中心化枢纽让任意 Agent（Hermes / Cursor / Codex / Kimi / 飞书）能共享同一份迁移数据。
 
-## 5 个 Skill 总览
+## 6 个 Skill 总览
 
 | Skill | 覆盖数据 | 状态 |
 |-------|---------|------|
-| [`/claude-full-migration`](./skills/claude-full-migration/SKILL.md) | **Meta-skill** — 一键编排下面 4 个 skill，自动发现数据源、规划执行、断点续跑、汇总审计 | ✅ v1.0 |
-| [`/hermes-migration`](./skills/hermes-migration/SKILL.md) | **Claude Code** — 47 种本地数据类型，`~/.claude/` + 项目 `.claude/` 全扫描，直迁到 Hermes Agent | ✅ v4.0 |
+| [`/claude-full-migration`](./skills/claude-full-migration/SKILL.md) | **Meta-skill** — 一键编排下面所有 skill，自动发现数据源、规划执行、断点续跑、汇总审计 | ✅ v1.0 |
+| [`/code-migration`](./skills/code-migration/SKILL.md) | **多目标** Claude Code → Hermes / **Cursor / Codex / Windsurf / Gemini CLI / Copilot** — 复用 hermes 的扫描器，替换目标适配器 | ✅ v1.0 |
+| [`/hermes-migration`](./skills/hermes-migration/SKILL.md) | **Claude Code → Hermes 专用** — 47 种本地数据类型全扫描，SQLite FTS5 会话导入，Hermes Agent 直迁 | ✅ v4.0 |
 | [`/chat-migration`](./skills/chat-migration/SKILL.md) | **Claude.ai Chat** — 官方 ZIP 导出 (conversations.json + projects.json + users.json)，提取 Artifacts / 附件 / 分支对话，输出 Markdown / Obsidian / neuDrive | ✅ v1.0 |
 | [`/cowork-migration`](./skills/cowork-migration/SKILL.md) | **Claude Cowork** — 团队 Workspace 导出，按成员分目录，扫描团队密钥，可选浏览器补齐 Skills/Connectors | ✅ v1.0 |
-| [`/neudrive-sync`](./skills/neudrive-sync/SKILL.md) | **neuDrive 枢纽** — 把上面三者的输出适配到 neuDrive canonical paths，走 SDK/API/Bundle，让多 Agent 共享身份+记忆+技能 | ✅ v1.0 |
+| [`/neudrive-sync`](./skills/neudrive-sync/SKILL.md) | **neuDrive 枢纽** — 把上面的输出适配到 neuDrive canonical paths，走 SDK/API/Bundle，让多 Agent 共享身份+记忆+技能 | ✅ v1.0 |
+
+### `/hermes-migration` vs `/code-migration`
+
+两者**共享扫描逻辑**，区别在输出适配：
+
+- `/hermes-migration` — 针对 Hermes Agent 做了深度优化（SQLite FTS5、Vault、Skills 完整迁移），**47 种数据类型一项不漏**。如果你就是要用 Hermes，选它。
+- `/code-migration` — **多目标**泛化版。覆盖 6 个目标（Hermes/Cursor/Codex/Windsurf/Gemini/Copilot）。各目标的数据粒度取决于目标平台的能力上限（如 Cursor 没有会话恢复，就只能归档 markdown）。如果你要迁多个 Agent，选它。
+
+两者可**同时**使用 — 比如先 `/hermes-migration` 拿到完整 Hermes 环境，再 `/code-migration --targets=cursor,codex` 把同一份数据投射到 Cursor + Codex。
 
 ## 推荐使用流程
 
