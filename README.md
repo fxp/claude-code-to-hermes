@@ -1,30 +1,62 @@
-# Claude Code → Hermes Agent Migration
+# Claude 全生态迁移工具集
 
-> 一键迁移 Claude Code 项目到 [Hermes Agent](https://github.com/nousresearch/hermes-agent) (Nous Research) 框架
+> 从 Claude 全家桶（Chat / Cowork / Code）迁移到任意 Agent 平台的完整 Skill 套件
 
-[![version](https://img.shields.io/badge/version-4.0.0-blue)](./skills/hermes-migration/SKILL.md)
-[![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![skill](https://img.shields.io/badge/type-Claude%20Code%20Skill-orange)](https://code.claude.com/docs/en/skills)
+[![hermes-migration](https://img.shields.io/badge/hermes--migration-v4.0-blue)](./skills/hermes-migration/SKILL.md)
+[![chat-migration](https://img.shields.io/badge/chat--migration-v1.0-green)](./skills/chat-migration/SKILL.md)
+[![cowork-migration](https://img.shields.io/badge/cowork--migration-v1.0-orange)](./skills/cowork-migration/SKILL.md)
+[![neudrive-sync](https://img.shields.io/badge/neudrive--sync-v1.0-purple)](./skills/neudrive-sync/SKILL.md)
+[![license](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
 ---
 
 ## 背景
 
-Claude 账号风控收紧，担心项目中断？这个 Skill 帮你一键把 Claude Code 项目完整迁移到 Hermes Agent，开发可以无缝继续。
+Claude 账号风控收紧，担心积累的对话/项目/技能丢失？这个仓库提供 4 个互相协作的 Claude Code Skill，覆盖 Claude 生态的三个产品线，并通过 [neuDrive](https://github.com/agi-bar/neuDrive) 作为中心化枢纽让任意 Agent（Hermes / Cursor / Codex / Kimi / 飞书）能共享同一份迁移数据。
 
-Hermes Agent 是 Nous Research 的开源 AI Agent 框架，原生支持 `CLAUDE.md`，对接 18+ LLM 提供商（含 BigModel 智谱 AI），拥有自己的记忆系统、skill 体系和会话持久化。
+## 4 个 Skill 总览
+
+| Skill | 覆盖数据 | 状态 |
+|-------|---------|------|
+| [`/hermes-migration`](./skills/hermes-migration/SKILL.md) | **Claude Code** — 47 种本地数据类型，`~/.claude/` + 项目 `.claude/` 全扫描，直迁到 Hermes Agent | ✅ v4.0 |
+| [`/chat-migration`](./skills/chat-migration/SKILL.md) | **Claude.ai Chat** — 官方 ZIP 导出 (conversations.json + projects.json + users.json)，提取 Artifacts / 附件 / 分支对话，输出 Markdown / Obsidian / neuDrive | ✅ v1.0 |
+| [`/cowork-migration`](./skills/cowork-migration/SKILL.md) | **Claude Cowork** — 团队 Workspace 导出，按成员分目录，扫描团队密钥，可选浏览器补齐 Skills/Connectors | ✅ v1.0 |
+| [`/neudrive-sync`](./skills/neudrive-sync/SKILL.md) | **neuDrive 枢纽** — 把上面三者的输出适配到 neuDrive canonical paths，走 SDK/API/Bundle，让多 Agent 共享身份+记忆+技能 | ✅ v1.0 |
+
+## 推荐使用流程
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  选择你要迁移的数据源（可多选）                            │
+│                                                          │
+│   Claude.ai Chat  →  /chat-migration                    │
+│   Claude Cowork   →  /cowork-migration                  │
+│   Claude Code     →  /hermes-migration                  │
+│                                                          │
+│  选择目标：                                               │
+│                                                          │
+│  A. 直迁到单个 Agent                                      │
+│     Claude Code → Hermes    （/hermes-migration 直出）    │
+│     Chat → Markdown/Obsidian（/chat-migration 直出）     │
+│                                                          │
+│  B. 通过 neuDrive 中转（推荐 — 多 Agent 协作）            │
+│     任意来源 → /neudrive-sync → hub → 所有 Agent (MCP)   │
+└─────────────────────────────────────────────────────────┘
+```
 
 ## 快速开始
 
-### 1. 安装 Skill
+### 1. 安装全部 Skill
 
 ```bash
 git clone https://github.com/fxp/claude-code-to-hermes.git
 mkdir -p ~/.claude/skills
-cp -r claude-code-to-hermes/skills/hermes-migration ~/.claude/skills/
+cp -r claude-code-to-hermes/skills/* ~/.claude/skills/
 ```
 
-### 2. 在任意 Claude Code 项目中运行
+### 2. 按场景选择
+
+**场景 A: 只迁 Claude Code → Hermes（最常见）**
 
 ```bash
 cd /path/to/your-project
@@ -32,11 +64,44 @@ claude
 > /hermes-migration
 ```
 
-Skill 会自动：
+Skill 会自动扫描 47 种数据类型、引导安装 Hermes、配置 LLM 提供商（推荐 BigModel GLM-5）、迁移数据并验证。
+
+**场景 B: 导出 Claude.ai 对话**
+
+```bash
+# 先去 https://claude.ai/settings/data-privacy-controls 点 Export
+# 等邮件拿到 ZIP
+claude
+> /chat-migration /path/to/export.zip
+```
+
+**场景 C: 团队空间迁移（需要 admin 权限）**
+
+```bash
+claude
+> /cowork-migration
+# admin 登录 → 导出团队数据 → skill 按成员分目录
+```
+
+**场景 D: 通过 neuDrive 中转多 Agent**
+
+```bash
+# 先跑任意一个来源 skill
+claude
+> /hermes-migration       # 或 /chat-migration, /cowork-migration
+> /neudrive-sync          # 推送到 neuDrive hub
+
+# 然后在 Cursor / Codex / Kimi 等任意 Agent 配置 MCP 接入:
+# {"mcpServers": {"neudrive": {"type":"http", "url":"https://www.neudrive.ai/mcp", "headers":{"Authorization":"Bearer ndt_xxx"}}}}
+```
+
+### 原 Skill 保留功能
+
+`/hermes-migration` 的完整迁移流程（不因上面的生态调整而改变）：
 
 1. **Phase 0** — 读取 Claude Code 最新文档，自检映射表是否需要更新
 2. **Phase 1** — 检查环境依赖（Python 3.11+, ripgrep, git）
-3. **Phase 2** — 深度扫描所有 Claude Code 数据（35+ 种）
+3. **Phase 2** — 深度扫描所有 Claude Code 数据（47 种）
 4. **Phase 3** — 引导安装 Hermes Agent
 5. **Phase 4** — 配置 LLM 提供商（推荐 BigModel，也支持 OpenAI/Anthropic/DeepSeek/Ollama）
 6. **Phase 5** — 迁移所有数据（含 SQLite 会话导入、Skill 格式转换）

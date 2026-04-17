@@ -26,9 +26,10 @@ Claude 生态有三个产品线，各自产生独立的数据：
 
 | Skill | 数据源 | 实现状态 | 输出 |
 |-------|--------|---------|------|
-| `chat-migration` | Claude.ai 官方导出 (conversations.json + projects.json) | 🟡 规划中 | neuDrive + 直迁 |
-| `cowork-migration` | Claude Cowork Admin API / 导出 | 🟡 规划中 | neuDrive + 直迁 |
+| `chat-migration` | Claude.ai 官方导出 (conversations.json + projects.json) | ✅ v1.0 已完成 | Markdown / Obsidian / neuDrive / FTS5 |
+| `cowork-migration` | Claude Cowork 官方导出（admin）+ 可选浏览器补齐 | ✅ v1.0 已完成 | 按成员分目录 / neuDrive |
 | `hermes-migration` | `~/.claude/` + 项目 `.claude/` (47+ 种数据) | ✅ v4.0 已完成 | Hermes / neuDrive |
+| `neudrive-sync` | 上述三者的输出 | ✅ v1.0 已完成 | neuDrive Hub (SDK/API/Bundle) |
 
 ### 一个统筹 Skill
 
@@ -197,10 +198,14 @@ neuDrive/
 ### Phase 1: 当前已完成 ✅
 
 - [x] `hermes-migration` v4.0 — Claude Code → Hermes（47+ 数据类型）
+- [x] `chat-migration` v1.0 — Claude.ai ZIP 解析（content[] 结构化、Artifacts 去重、附件下载）
+- [x] `cowork-migration` v1.0 — 团队导出 + 成员归属 + 密钥扫描
+- [x] `neudrive-sync` v1.0 — neuDrive canonical paths 适配 + Vault + Bundle
+- [x] neuDrive 源码调研（docs/neudrive-study.md）
 - [x] GitHub 公开仓库 + Pages
 - [x] BigModel/GLM-5 作为推荐 LLM 提供商
 
-### Phase 2: Chat 导出 🟡 规划中
+### Phase 2: Chat 导出 ✅ 已完成
 
 **新增 Skill**: `~/.claude/skills/chat-migration/SKILL.md`
 
@@ -219,7 +224,7 @@ neuDrive/
 - Token 统计 & 去重（对话分段、压缩）
 - Projects 与 Conversations 的双向关联保留
 
-### Phase 3: Cowork 导出 🟡 规划中
+### Phase 3: Cowork 导出 ✅ 已完成
 
 **新增 Skill**: `~/.claude/skills/cowork-migration/SKILL.md`
 
@@ -235,7 +240,7 @@ neuDrive/
 4. 多成员数据按 member 分目录
 5. 敏感信息剥离到 `/secrets/vault/`
 
-### Phase 4: neuDrive 集成 🟡 规划中
+### Phase 4: neuDrive 集成 ✅ 已完成
 
 **新增 Skill**: `~/.claude/skills/neudrive-sync/SKILL.md`
 
