@@ -343,15 +343,16 @@ Phase 5: 验证 + 完成报告
 仓库结构（规划）:
 
 ```
-claude-code-to-hermes/ → 重命名为 → claude-migration/
+claude-code-migration/
 ├── README.md                              # 总介绍
 ├── MIGRATION_STRATEGY.md                  # 本文档
 ├── skills/
-│   ├── claude-full-migration/SKILL.md    # meta-skill
+│   ├── claude-full-migration/SKILL.md    # meta-skill (入口)
+│   ├── code-migration/SKILL.md           # Claude Code → 多目标 (Hermes/Cursor/Codex/Windsurf/Gemini/Copilot)
+│   ├── hermes-migration/SKILL.md         # Claude Code → Hermes 专用 (深度优化)
 │   ├── chat-migration/SKILL.md           # Claude.ai Chat
 │   ├── cowork-migration/SKILL.md         # Claude Cowork
-│   ├── hermes-migration/SKILL.md         # Claude Code (已存在)
-│   └── neudrive-sync/SKILL.md            # neuDrive 集成
+│   └── neudrive-sync/SKILL.md            # neuDrive 枢纽集成
 ├── examples/
 │   ├── chat-export-sample/               # 脱敏示例
 │   ├── cowork-export-sample/
@@ -386,6 +387,6 @@ claude-code-to-hermes/ → 重命名为 → claude-migration/
 - neuDrive: https://github.com/agi-bar/neuDrive
 - Hermes Agent: https://github.com/nousresearch/hermes-agent
 - Claude Code 文档: https://code.claude.com/docs/en/overview
-- 本仓库: https://github.com/fxp/claude-code-to-hermes
+- 本仓库: https://github.com/fxp/claude-code-migration
 
 欢迎 issue / PR 讨论。
