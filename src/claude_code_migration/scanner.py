@@ -191,6 +191,7 @@ class ClaudeScan:
     plugins_skills: list[SkillDef] = field(default_factory=list)  # skills bundled in installed plugins
     marketplaces: list[Marketplace] = field(default_factory=list)
     org: OrgMetadata | None = None
+    scheduled_tasks: list[dict[str, Any]] = field(default_factory=list)  # ~/.claude/scheduled-tasks/
     history_count: int = 0
     worktreeinclude: list[str] = field(default_factory=list)
 
@@ -366,6 +367,22 @@ def scan_claude_code(
     if plugins_file.exists():
         scan.plugins_installed = _load_json_safe(plugins_file)
         _scan_plugins(plugins_dir, scan)
+
+    # Scheduled tasks — ~/.claude/scheduled-tasks/<name>/SKILL.md
+    sched_dir = claude_home / "scheduled-tasks"
+    if sched_dir.is_dir():
+        for sub in sched_dir.iterdir():
+            if sub.is_dir():
+                skill_md = sub / "SKILL.md"
+                if skill_md.exists():
+                    text = _read_safe(skill_md) or ""
+                    meta, body = _parse_frontmatter(text)
+                    scan.scheduled_tasks.append({
+                        "name": sub.name,
+                        "path": str(skill_md),
+                        "frontmatter": meta,
+                        "body": body,
+                    })
 
     # history.jsonl (count only)
     hist = claude_home / "history.jsonl"

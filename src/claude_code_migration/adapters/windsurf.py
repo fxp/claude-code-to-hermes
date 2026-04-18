@@ -12,7 +12,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .base import Adapter, MigrationResult, ensure_dir, build_universal_agents_md
+from .base import (Adapter, MigrationResult, ensure_dir,
+                   build_universal_agents_md, render_cowork_project_markdown,
+                   safe_slug, write_archive)
 
 
 class WindsurfAdapter(Adapter):
@@ -92,8 +94,34 @@ class WindsurfAdapter(Adapter):
             (rules_dir / f"cc-agent-{name}.md").write_text(body, encoding="utf-8")
             r.files_written.append(str(rules_dir / f"cc-agent-{name}.md"))
 
+        # Cowork Projects → .windsurf/rules/cowork-project-<slug>.md
+        if cowork_export and (cowork_export.get("projects") or []):
+            for cproj in cowork_export["projects"]:
+                slug = safe_slug(cproj.get("name", "project"))
+                path = rules_dir / f"cowork-project-{slug}.md"
+                path.write_text(render_cowork_project_markdown(cproj, include_docs=True),
+                                encoding="utf-8")
+                r.files_written.append(str(path))
+
+        # Scheduled tasks → .windsurf/rules/scheduled-<slug>.md
+        sched = scan.get("scheduled_tasks") or []
+        if sched:
+            for st in sched:
+                slug = safe_slug(st["name"])
+                path = rules_dir / f"scheduled-{slug}.md"
+                path.write_text(f"# {st['name']}\n\n" + (st.get("body") or ""),
+                                encoding="utf-8")
+                r.files_written.append(str(path))
+            r.warnings.append(
+                f"{len(sched)} scheduled tasks preserved as rules (Windsurf has no cron)"
+            )
+
         if cowork_export:
-            r.warnings.append("Windsurf has no session-resume feature; Cowork conversations not imported (use Hermes target)")
+            r.warnings.append("Windsurf has no session-resume feature; Cowork conversations not imported to state (use Hermes target)")
+
+        # Archive: unmigrateable raw data
+        archive_files = write_archive(out_dir, scan, cowork_export)
+        r.files_written.extend(archive_files)
 
         r.post_install_hint = (
             "Windsurf setup:\n"

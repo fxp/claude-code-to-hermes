@@ -11,7 +11,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .base import Adapter, MigrationResult, ensure_dir, build_universal_agents_md
+from .base import (Adapter, MigrationResult, ensure_dir,
+                   build_universal_agents_md, render_cowork_project_markdown,
+                   safe_slug, write_archive)
 
 
 class CursorAdapter(Adapter):
@@ -133,6 +135,42 @@ class CursorAdapter(Adapter):
             r.files_written.append(str(ur_dir / "cursor-user-rules.md"))
             r.warnings.append("User Rules: copy from .migration/cursor-user-rules.md into Cursor Settings")
 
+        # 6b. Cowork Projects → .cursor/rules/cowork-project-<slug>.mdc
+        #     (each Cowork Project becomes a manual-invoke rule)
+        if cowork_export and (cowork_export.get("projects") or []):
+            for cproj in cowork_export["projects"]:
+                slug = safe_slug(cproj.get("name", "project"))
+                rule = (
+                    "---\n"
+                    f"description: Cowork project · {cproj.get('name', slug)}\n"
+                    "alwaysApply: false\n"
+                    "---\n\n"
+                    + render_cowork_project_markdown(cproj, include_docs=True)
+                )
+                path = rules_dir / f"cowork-project-{slug}.mdc"
+                path.write_text(rule, encoding="utf-8")
+                r.files_written.append(str(path))
+
+        # 6c. Scheduled tasks preserved as manual-invoke rules
+        sched = scan.get("scheduled_tasks") or []
+        if sched:
+            for st in sched:
+                slug = safe_slug(st["name"])
+                rule = (
+                    "---\n"
+                    f"description: Scheduled task · {st['name']}\n"
+                    "alwaysApply: false\n"
+                    "---\n\n"
+                    f"# {st['name']}\n\n"
+                    + (st.get("body") or "")
+                )
+                path = rules_dir / f"scheduled-{slug}.mdc"
+                path.write_text(rule, encoding="utf-8")
+                r.files_written.append(str(path))
+            r.warnings.append(
+                f"{len(sched)} scheduled tasks preserved as manual rules (Cursor has no cron)"
+            )
+
         # 7. Cowork conversations: archive to .migration/conversations (not Cursor-readable, just preserved)
         if cowork_export:
             arch = ensure_dir(out_dir / ".migration" / "conversations")
@@ -144,6 +182,10 @@ class CursorAdapter(Adapter):
                 f.write_text("\n\n".join(lines), encoding="utf-8")
                 r.files_written.append(str(f))
             r.warnings.append("Cursor has no session-resume feature; conversations archived to markdown")
+
+        # 8. Archive: unmigrateable raw data
+        archive_files = write_archive(out_dir, scan, cowork_export)
+        r.files_written.extend(archive_files)
 
         r.post_install_hint = (
             "Cursor setup:\n"

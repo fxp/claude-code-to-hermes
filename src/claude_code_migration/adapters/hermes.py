@@ -8,7 +8,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .base import Adapter, MigrationResult, ensure_dir, build_universal_agents_md
+from .base import (Adapter, MigrationResult, ensure_dir,
+                   build_universal_agents_md, render_cowork_project_markdown,
+                   safe_slug, write_archive)
 
 
 class HermesAdapter(Adapter):
@@ -202,7 +204,41 @@ metadata:
             conn.close()
             r.files_written.append(str(db_path))
 
-        # 7. Cowork conversations → state.db (if provided)
+        # 7a. Cowork Projects → ~/.hermes/memories/projects/<slug>/context.md
+        if cowork_export and (cowork_export.get("projects") or []):
+            proj_root = ensure_dir(hermes_root / "memories" / "projects")
+            for cproj in cowork_export["projects"]:
+                slug = safe_slug(cproj.get("name", "project"))
+                proj_dir = ensure_dir(proj_root / slug)
+                proj_dir.joinpath("context.md").write_text(
+                    render_cowork_project_markdown(cproj, include_docs=True),
+                    encoding="utf-8")
+                r.files_written.append(str(proj_dir / "context.md"))
+
+        # 7b. Scheduled tasks → ~/.hermes/cron/<name>.md (Hermes has cronjob tool)
+        sched = scan.get("scheduled_tasks") or []
+        if sched:
+            cron_dir = ensure_dir(hermes_root / "cron")
+            for st in sched:
+                p = cron_dir / f"{safe_slug(st['name'])}.md"
+                fm = st.get("frontmatter") or {}
+                body = st.get("body") or ""
+                # Hermes can't auto-trigger; dump as reference doc
+                content = f"# Scheduled Task: {st['name']}\n\n"
+                if fm:
+                    content += "Frontmatter:\n```yaml\n"
+                    for k, v in fm.items():
+                        content += f"{k}: {v}\n"
+                    content += "```\n\n"
+                content += body
+                p.write_text(content, encoding="utf-8")
+                r.files_written.append(str(p))
+            r.warnings.append(
+                f"{len(sched)} scheduled tasks preserved in ~/.hermes/cron/ — "
+                "manually re-create with Hermes `cronjob` tool"
+            )
+
+        # 8. Cowork conversations → state.db (if provided)
         if cowork_export:
             db_path = hermes_root / "state.db"
             # Ensure db exists
@@ -243,6 +279,13 @@ metadata:
                     )
             conn.commit()
             conn.close()
+
+        # 9. Archive: unmigrateable raw data preserved in _archive/
+        archive_files = write_archive(out_dir, scan, cowork_export,
+                                      unmigratable_notes=[
+                                          "Hermes does not support scheduled-task auto-trigger; see cron/ for preserved tasks",
+                                      ] if (scan.get("scheduled_tasks") or []) else None)
+        r.files_written.extend(archive_files)
 
         r.post_install_hint = (
             "Install Hermes: curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash\n"

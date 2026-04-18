@@ -43,6 +43,177 @@ def ensure_dir(p: Path) -> Path:
     return p
 
 
+def safe_slug(s: str, max_len: int = 64) -> str:
+    import re
+    slug = re.sub(r"[^A-Za-z0-9\u4e00-\u9fa5]+", "-", s or "")
+    return slug.strip("-")[:max_len] or "untitled"
+
+
+def render_cowork_project_markdown(proj: dict[str, Any], include_docs: bool = True) -> str:
+    """Render a Claude Project / Cowork Project into self-contained markdown.
+
+    Combines description + prompt_template (custom instructions) + docs
+    into one file suitable as AGENTS.md / rule / memory file for any target.
+    """
+    parts: list[str] = []
+    parts.append(f"# {proj.get('name', 'Project')}")
+    if proj.get("is_shared"):
+        parts.append("> 🌐 Shared Cowork project")
+    if proj.get("description"):
+        parts.append(f"\n{proj['description'].strip()}")
+    pt = (proj.get("prompt_template") or "").strip()
+    if pt:
+        parts.append("\n## Custom Instructions (prompt_template)\n")
+        parts.append(pt)
+    docs = proj.get("docs") or []
+    if include_docs and docs:
+        parts.append(f"\n## Knowledge Base ({len(docs)} docs)\n")
+        for d in docs:
+            fname = d.get("filename") or "untitled"
+            content = (d.get("content") or "").strip()
+            if content:
+                parts.append(f"### {fname}\n\n{content}")
+            else:
+                parts.append(f"### {fname}\n\n_(empty or binary)_")
+    return "\n\n".join(parts) + "\n"
+
+
+def write_archive(
+    out_dir: Path,
+    scan: dict[str, Any],
+    cowork_export: dict[str, Any] | None = None,
+    unmigratable_notes: list[str] | None = None,
+) -> list[str]:
+    """Write an `_archive/` containing raw artifacts that couldn't be mapped
+    to target-native files — so users never lose data even for features a
+    target doesn't support.
+
+    Contents:
+    - raw-cowork-export.json: full parsed cowork ZIP (if provided)
+    - plugin-inventory.json: installed plugins + marketplaces
+    - org-metadata.json: Cowork org info
+    - secrets-manifest.json: SHA256 hashes of detected secrets (no values)
+    - MIGRATION_NOTES.md: what was/wasn't migrated + recovery steps
+    """
+    import json
+    from datetime import datetime, timezone
+
+    archive = ensure_dir(out_dir / "_archive")
+    written: list[str] = []
+
+    # Raw cowork export
+    if cowork_export:
+        p = archive / "raw-cowork-export.json"
+        p.write_text(json.dumps(cowork_export, indent=2, ensure_ascii=False, default=str),
+                     encoding="utf-8")
+        written.append(str(p))
+
+    # Plugin inventory
+    plugins_manifest = {
+        "plugins": scan.get("plugins") or [],
+        "marketplaces": scan.get("marketplaces") or [],
+        "plugins_installed_raw": scan.get("plugins_installed"),
+    }
+    p = archive / "plugin-inventory.json"
+    p.write_text(json.dumps(plugins_manifest, indent=2, ensure_ascii=False, default=str),
+                 encoding="utf-8")
+    written.append(str(p))
+
+    # Org metadata
+    if scan.get("org"):
+        p = archive / "org-metadata.json"
+        p.write_text(json.dumps(scan["org"], indent=2, ensure_ascii=False, default=str),
+                     encoding="utf-8")
+        written.append(str(p))
+
+    # Secret manifest (SHA256 hashes only, no raw values — safe to commit)
+    try:
+        from ..secrets import scan_secrets
+        findings = scan_secrets(scan)
+        manifest = [
+            {
+                "source": f.source,
+                "kind": f.kind,
+                "sha256_prefix": f.sha256_prefix,
+                "suggested_env_var": f.suggested_env_var,
+            }
+            for f in findings
+        ]
+        p = archive / "secrets-manifest.json"
+        p.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        written.append(str(p))
+    except Exception:
+        pass
+
+    # MIGRATION_NOTES.md
+    notes_lines = [
+        "# Migration Notes",
+        "",
+        f"Generated: {datetime.now(timezone.utc).isoformat().replace('+00:00','Z')} by claude-code-migration",
+        "",
+        "This `_archive/` holds raw artifacts that couldn't be losslessly",
+        "mapped to your target framework's native format. Keep it alongside",
+        "your target output.",
+        "",
+        "## What's in here",
+        "",
+        "- `raw-cowork-export.json` — full parsed Cowork/Chat ZIP contents",
+        "- `plugin-inventory.json` — installed plugins + marketplace sources",
+        "- `org-metadata.json` — Cowork organization info",
+        "- `secrets-manifest.json` — SHA256 hashes of detected secrets",
+        "  (NO plaintext values; safe to commit)",
+        "",
+        "## What CAN'T be migrated automatically",
+        "",
+        "These Cowork features have no equivalent in any target framework",
+        "or require manual setup:",
+        "",
+        "- **Custom styles** (concise / explanatory / formal) — set in Claude.ai",
+        "  Settings → Appearance → Style. Not exported by Anthropic.",
+        "- **Connected apps** (Google Drive, Gmail, Slack, etc.) — each target",
+        "  needs its own OAuth setup. In OpenCode use `opencode auth login`;",
+        "  in Hermes use environment variables or vault.",
+        "- **Cowork activity audit trail** — only accessible via your organization's",
+        "  OpenTelemetry (OTel) collector (see",
+        "  https://support.claude.com/en/articles/14477985).",
+        "- **Cursor User Rules** — Cursor stores these in a settings DB, not files.",
+        "  See `.migration/cursor-user-rules.md` for paste-ready content.",
+        "- **Artifact version history** — Anthropic exports only the final content",
+        "  of each artifact; prior revisions are lost.",
+        "",
+        "## What WAS migrated",
+        "",
+    ]
+
+    if cowork_export:
+        ce = cowork_export
+        notes_lines.append(
+            f"- **Cowork source**: {ce.get('source', 'chat')}, "
+            f"{len(ce.get('conversations') or [])} conversations, "
+            f"{len(ce.get('projects') or [])} projects, "
+            f"{len(ce.get('workspace_ids') or [])} workspaces"
+        )
+    plugs = scan.get("plugins") or []
+    if plugs:
+        notes_lines.append(f"- **Plugins**: {len(plugs)} installed, see plugin-inventory.json")
+    if scan.get("org"):
+        notes_lines.append(f"- **Org**: {scan['org'].get('organization_name', '?')} "
+                           f"(role={scan['org'].get('organization_role', '?')})")
+
+    if unmigratable_notes:
+        notes_lines.append("")
+        notes_lines.append("## Target-specific notes")
+        notes_lines.append("")
+        for n in unmigratable_notes:
+            notes_lines.append(f"- {n}")
+
+    p = archive / "MIGRATION_NOTES.md"
+    p.write_text("\n".join(notes_lines) + "\n", encoding="utf-8")
+    written.append(str(p))
+
+    return written
+
+
 def build_universal_agents_md(scan: dict[str, Any], header_note: str = "") -> str:
     """AGENTS.md content — universal across Cursor/Codex/Gemini/OpenCode.
 

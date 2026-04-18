@@ -9,7 +9,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .base import Adapter, MigrationResult, ensure_dir, build_universal_agents_md
+from .base import (Adapter, MigrationResult, ensure_dir,
+                   build_universal_agents_md, render_cowork_project_markdown,
+                   safe_slug, write_archive)
 
 
 DEFAULT_MODEL = "bigmodel/glm-5"
@@ -191,6 +193,41 @@ class OpenCodeAdapter(Adapter):
                 agent_path.write_text("\n".join(fm_lines) + "\n\n" + (a.get("instructions") or ""), encoding="utf-8")
                 r.files_written.append(str(agent_path))
 
+        # 4b. Cowork Projects → .opencode/projects/<slug>/AGENTS.md (per-project context)
+        if cowork_export and project_dir and (cowork_export.get("projects") or []):
+            projs_root = ensure_dir(project_dir / ".opencode" / "projects")
+            for cproj in cowork_export["projects"]:
+                slug = safe_slug(cproj.get("name", "project"))
+                pdir = ensure_dir(projs_root / slug)
+                agents_md = pdir / "AGENTS.md"
+                agents_md.write_text(
+                    render_cowork_project_markdown(cproj, include_docs=True),
+                    encoding="utf-8")
+                r.files_written.append(str(agents_md))
+                # Also emit docs as separate files for easier reference
+                if cproj.get("docs"):
+                    docs_dir = ensure_dir(pdir / "docs")
+                    for d in cproj["docs"]:
+                        fname = safe_slug(d.get("filename") or "doc") + ".md"
+                        docs_dir.joinpath(fname).write_text(d.get("content") or "",
+                                                             encoding="utf-8")
+                        r.files_written.append(str(docs_dir / fname))
+
+        # 4c. Scheduled tasks → .opencode/scheduled-tasks/ (no native trigger in OpenCode;
+        #     preserve as documentation)
+        sched = scan.get("scheduled_tasks") or []
+        if sched and project_dir:
+            sched_dir = ensure_dir(project_dir / ".opencode" / "scheduled-tasks")
+            for st in sched:
+                p = sched_dir / f"{safe_slug(st['name'])}.md"
+                p.write_text(f"# {st['name']}\n\n" + (st.get("body") or ""),
+                             encoding="utf-8")
+                r.files_written.append(str(p))
+            r.warnings.append(
+                f"{len(sched)} scheduled tasks saved to .opencode/scheduled-tasks/ "
+                "(OpenCode has no native cron; manual trigger needed)"
+            )
+
         # 5. Cowork conversations → OpenCode session export format
         if cowork_export and project_dir:
             sess_dir = ensure_dir(project_dir / ".opencode" / "sessions-imported")
@@ -206,6 +243,10 @@ class OpenCodeAdapter(Adapter):
                 f.write_text("\n\n".join(body), encoding="utf-8")
                 r.files_written.append(str(f))
                 count += 1
+
+        # 6. Archive: unmigrateable raw data
+        archive_files = write_archive(out_dir, scan, cowork_export)
+        r.files_written.extend(archive_files)
 
         r.post_install_hint = (
             "Install OpenCode: https://opencode.ai/docs/installation\n"
