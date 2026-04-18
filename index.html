@@ -109,6 +109,51 @@
   .btn-primary:hover { background: #e8875f; border-color: #e8875f; }
   .btn-icon { font-size: 16px; }
 
+  .hero-flow {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin: 28px 0 12px;
+    flex-wrap: wrap;
+  }
+  .flow-step {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 16px;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+    min-width: 180px;
+  }
+  .flow-num {
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .flow-label {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .flow-step code {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 2px 0;
+  }
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    font-size: 22px;
+    color: var(--text-mute);
+  }
+  @media (max-width: 640px) {
+    .flow-arrow { transform: rotate(90deg); margin: 0 auto; }
+    .hero-flow { flex-direction: column; align-items: stretch; }
+  }
+
   .hero-stats {
     display: flex;
     gap: 40px;
@@ -589,8 +634,14 @@
     <p class="tagline">
       通过 <strong>中间层 IR</strong>，任意 Agent 平台之间互相迁移：
       <strong>Claude Code / Chat / Cowork / Cursor / OpenCode / Hermes / Windsurf</strong> 两两互通。
-      CLI <code>ccm migrate --source cursor --target opencode</code>。
     </p>
+    <div class="hero-flow">
+      <div class="flow-step"><span class="flow-num">①</span><span class="flow-label">指项目</span><code>--project &lt;dir&gt;</code></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step"><span class="flow-num">②</span><span class="flow-label">导出 IR</span><code>ccm export</code></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step"><span class="flow-num">③</span><span class="flow-label">生成目标</span><code>ccm apply --target &lt;agent&gt;</code></div>
+    </div>
     <div class="cta-row">
       <a href="#quickstart" class="btn btn-primary">
         <span class="btn-icon">→</span>
@@ -714,12 +765,18 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .</code></pre>
     </div>
 
-    <p style="color:var(--text-dim);margin:14px 0 10px;">扫描一个项目：</p>
+    <p style="color:var(--text-dim);margin:14px 0 10px;"><strong>3 步走</strong> — 添加项目 → 导出为 IR → 按目标生成：</p>
     <div class="qs-block">
-      <pre><code>ccm scan --project /path/to/your-project</code></pre>
+      <pre><code># ① 告诉工具项目在哪 + ② 自动识别 60+ 种数据 → 中间 IR
+ccm export --project /path/to/your-project --out ./ccm-output/ir.json
+
+# ③ 同一份 IR 生成任意目标（可反复跑，不必重扫）
+ccm apply --ir ./ccm-output/ir.json --target hermes   --out ./ccm-output
+ccm apply --ir ./ccm-output/ir.json --target opencode --out ./ccm-output
+ccm apply --ir ./ccm-output/ir.json --target cursor,windsurf --out ./ccm-output</code></pre>
     </div>
 
-    <p style="color:var(--text-dim);margin:14px 0 10px;">Claude Code → 4 个目标（默认 staging，不动真实项目）：</p>
+    <p style="color:var(--text-dim);margin:14px 0 10px;">一次跑完（<code>export + apply</code> 打包）：</p>
     <div class="qs-block">
       <pre><code>ccm migrate --project /path/to/your-project \
             --target hermes,opencode,cursor,windsurf \
@@ -747,11 +804,10 @@ ccm migrate --source opencode --project ~/oc-proj \
             --target hermes,opencode --out ./ccm-output</code></pre>
     </div>
 
-    <p style="color:var(--text-dim);margin:14px 0 10px;">推送到 neuDrive Hub：</p>
+    <p style="color:var(--text-dim);margin:14px 0 10px;">推送到 neuDrive Hub（走 legacy scan.json 格式）：</p>
     <div class="qs-block">
-      <pre><code>ccm push-hub --scan ./ccm-output/scan.json \
-             --token $NEUDRIVE_TOKEN \
-             --api-base https://www.neudrive.ai</code></pre>
+      <pre><code>ccm scan     --project /path/to/your-project --out ./ccm-output/scan.json
+ccm push-hub --scan   ./ccm-output/scan.json --token $NEUDRIVE_TOKEN</code></pre>
     </div>
 
     <h3 style="margin: 40px 0 12px;font-size:18px;color:var(--text-dim);">方式 B · Claude Code Skills（无 Python 环境）</h3>

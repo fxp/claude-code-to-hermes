@@ -61,33 +61,39 @@ pip install -e .
 
 CLI 入口：`ccm` 或 `claude-code-migration`。
 
-### 快速使用
+### 3 步使用（与你的心智模型对齐）
+
+```
+ ┌── Step 1 ─────────────┐    ┌── Step 2 ──────────────┐    ┌── Step 3 ───────────────┐
+ │ 告诉工具项目在哪      │ →  │ 自动识别 + 导出为 IR   │ →  │ 按选定目标框架生成项目  │
+ │ (--project /path)     │    │ (ir.json，中间状态)    │    │ (--target hermes/…)     │
+ └───────────────────────┘    └────────────────────────┘    └─────────────────────────┘
+```
 
 ```bash
-# 1. 扫描一个项目（只读，输出摘要）
-ccm scan --project /path/to/your-project
+# Step 2 · 扫描并导出为 IR（中间状态）
+ccm export --project /path/to/your-project --out ./ccm-output/ir.json
 
-# 2. 迁移到某个目标（产物默认在 ./ccm-output/<target>-target/）
-ccm migrate --project /path/to/your-project \
-            --target hermes \
-            --out ./ccm-output
+# Step 3 · 把同一份 IR 生成为任意目标（可反复跑，换 target 不必重扫）
+ccm apply --ir ./ccm-output/ir.json --target hermes   --out ./ccm-output
+ccm apply --ir ./ccm-output/ir.json --target opencode --out ./ccm-output
+ccm apply --ir ./ccm-output/ir.json --target cursor,windsurf --out ./ccm-output
 
-# 3. 多目标并行（一份 scan 生成 4 套配置）
-ccm migrate --project /path/to/your-project \
-            --target hermes,opencode,cursor,windsurf \
-            --out ./ccm-output
+# 一次跑完（export + apply 打包）
+ccm migrate --project /path/to/your-project --target hermes,opencode,cursor,windsurf
 
-# 4. 含 Claude.ai / Cowork ZIP 导出（从 Settings → Privacy → Export data 拿到）
+# 含 Claude.ai / Cowork ZIP（从 Settings → Privacy → Export data 拿到）
 ccm migrate --project /path/to/your-project \
             --cowork-zip ~/Downloads/claude-data-export.zip \
-            --target hermes,opencode \
-            --out ./ccm-output
+            --target hermes,opencode
 
-# 5. 推送到 neuDrive Hub (agi-bar/neuDrive)
-ccm push-hub --scan ./ccm-output/scan.json \
-             --token $NEUDRIVE_TOKEN \
-             --api-base https://www.neudrive.ai
+# neuDrive Hub 推送（走 legacy scan.json；ccm scan 产出该格式）
+ccm scan     --project /path/to/your-project --out ./ccm-output/scan.json
+ccm push-hub --scan   ./ccm-output/scan.json --token $NEUDRIVE_TOKEN
 ```
+
+**为什么分三步？** 一次 `export` 后，`apply` 可以针对不同 target 反复跑，而不用再扫一遍
+（大项目的 session JSONL 常常几十 MB）。IR 是审计 / 版本控制友好的纯 JSON。
 
 ### 安全默认
 
