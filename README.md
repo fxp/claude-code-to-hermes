@@ -61,33 +61,49 @@ pip install -e .
 
 CLI 入口：`ccm` 或 `claude-code-migration`。
 
-### 快速使用
+### 3 步使用（与你的心智模型对齐）
+
+```
+ ┌── Step 1 ─────────────┐    ┌── Step 2 ──────────────┐    ┌── Step 3 ───────────────┐
+ │ 告诉工具项目在哪      │ →  │ 自动识别 + 导出为 IR   │ →  │ 按选定目标框架生成项目  │
+ │ (--project /path)     │    │ (ir.json，中间状态)    │    │ (--target hermes/…)     │
+ └───────────────────────┘    └────────────────────────┘    └─────────────────────────┘
+```
 
 ```bash
-# 1. 扫描一个项目（只读，输出摘要）
-ccm scan --project /path/to/your-project
+# Step 2 · 扫描并导出为 IR（中间状态）
+ccm export --project /path/to/your-project --out ./ccm-output/ir.json
 
-# 2. 迁移到某个目标（产物默认在 ./ccm-output/<target>-target/）
-ccm migrate --project /path/to/your-project \
-            --target hermes \
-            --out ./ccm-output
+# Step 3 · 把同一份 IR 生成为任意目标（可反复跑，换 target 不必重扫）
+ccm apply --ir ./ccm-output/ir.json --target hermes   --out ./ccm-output
+ccm apply --ir ./ccm-output/ir.json --target opencode --out ./ccm-output
+ccm apply --ir ./ccm-output/ir.json --target cursor,windsurf --out ./ccm-output
 
-# 3. 多目标并行（一份 scan 生成 4 套配置）
-ccm migrate --project /path/to/your-project \
-            --target hermes,opencode,cursor,windsurf \
-            --out ./ccm-output
+# 一次跑完（export + apply 打包）
+ccm migrate --project /path/to/your-project --target hermes,opencode,cursor,windsurf
 
-# 4. 含 Claude.ai / Cowork ZIP 导出（从 Settings → Privacy → Export data 拿到）
+# 含 Claude.ai / Cowork ZIP（从 Settings → Privacy → Export data 拿到）
 ccm migrate --project /path/to/your-project \
             --cowork-zip ~/Downloads/claude-data-export.zip \
-            --target hermes,opencode \
-            --out ./ccm-output
+            --target hermes,opencode
 
-# 5. 推送到 neuDrive Hub (agi-bar/neuDrive)
-ccm push-hub --scan ./ccm-output/scan.json \
-             --token $NEUDRIVE_TOKEN \
-             --api-base https://www.neudrive.ai
+# neuDrive Hub 推送（走 legacy scan.json；ccm scan 产出该格式）
+ccm scan     --project /path/to/your-project --out ./ccm-output/scan.json
+ccm push-hub --scan   ./ccm-output/scan.json --token $NEUDRIVE_TOKEN
 ```
+
+**为什么分三步？** 一次 `export` 后，`apply` 可以针对不同 target 反复跑，而不用再扫一遍
+（大项目的 session JSONL 常常几十 MB）。IR 是审计 / 版本控制友好的纯 JSON。
+
+**关于安全性**：写盘的 `ir.json` / `scan.json` 自动完成：
+- **明文密钥 redact**：MCP headers 里的 Bearer、环境变量里的 `*_API_KEY`、会话正文/历史里粘贴的
+  `sk-ant-*` / `ghp_*` / `AKIA*` / PEM private keys / BigModel `32hex.16alnum` 全部替换为
+  `${CC_<PATH>}` 占位符，adapters 会把这些占位符原样传到 target config（运行时读 env）。
+- **文件权限 0o600**：user-only，防止共享机器上其他账户 `cat` 走。
+- **同目录生成 `*.secrets-manifest.json`**：只含 SHA256 前缀和建议 env var 名，不含原文；
+  可以用来审计"这次导出哪些密钥被脱敏了"。
+- 即便是经过脱敏，IR 仍然包含 session 正文、shell 快照等隐私内容 —— **不建议 commit 到公共仓库**。
+  自用备份 / 本地迁移是完全安全的。
 
 ### 安全默认
 
@@ -99,7 +115,7 @@ ccm push-hub --scan ./ccm-output/scan.json \
 
 ```
 src/claude_code_migration/
-├── scanner.py              Claude Code 数据扫描（47 种类型）
+├── scanner.py              Claude Code 数据扫描（60+ 种：含 session 正文、subagents、tool-results、shell-snapshots、file-history、per-project state）
 ├── secrets.py              API Key / Bearer token 检测
 ├── cowork.py               Claude.ai ZIP 解析（2026 schema）
 ├── hub.py                  neuDrive HTTP 客户端（调 API，不拷代码）
@@ -116,11 +132,14 @@ src/claude_code_migration/
 
 ```bash
 pip install pytest
-pytest tests/            # 18 个测试全部通过
+pytest tests/            # 56 个测试全部通过
 ```
 
-- **`test_e2e.py`** (7 tests)：format-level 验证，每个 adapter 产物符合目标 schema
-- **`test_e2e_live.py`** (11 tests)：**真实子进程执行**，例如实际跑 `opencode models` 验证迁移的 config 被 OpenCode 识别
+- **`test_e2e.py`** (7)：format-level 验证
+- **`test_e2e_live.py`** (11)：**真实子进程执行**（`opencode models` 等）
+- **`test_cowork.py`** (12)：插件清单 + org metadata 传播
+- **`test_cowork_full.py`** (13)：Cowork Projects + `_archive` + 不可迁移项
+- **`test_roundtrip.py`** (13)：**任意 source → IR → 任意 target** 互迁
 
 ## 目标框架支持矩阵
 
