@@ -1,4 +1,4 @@
-"""Hermes Agent → IR.
+"""Hermes Agent → Workspace Dossier.
 
 Reads:
 - ~/.hermes/config.yaml                  (provider + model + MCP)

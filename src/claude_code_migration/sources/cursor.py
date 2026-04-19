@@ -1,4 +1,4 @@
-"""Cursor → IR.
+"""Cursor → Workspace Dossier.
 
 Reads:
 - <project>/.cursor/rules/*.mdc       (project rules)

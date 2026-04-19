@@ -1,4 +1,4 @@
-"""Windsurf → IR."""
+"""Windsurf → Workspace Dossier."""
 from __future__ import annotations
 
 import json

@@ -1,4 +1,4 @@
-"""Redactor — scrub plaintext secrets out of scan/IR dicts before disk write.
+"""Redactor — scrub plaintext secrets out of scan/dossier dicts before disk write.
 
 Two mechanisms compose:
 
@@ -92,7 +92,7 @@ def redact(
     """Deep-copy `obj` with sensitive values redacted.
 
     Returns (redacted_copy, findings). Does NOT mutate the input.
-    Safe to call on scanner dicts, IR to_dict() output, or nested JSON.
+    Safe to call on scanner dicts, dossier.to_dict() output, or nested JSON.
     """
     if findings is None:
         findings = []

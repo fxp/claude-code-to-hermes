@@ -1,4 +1,4 @@
-"""Claude.ai Chat / Cowork ZIP export → IR."""
+"""Claude.ai Chat / Cowork ZIP export → Workspace Dossier."""
 from __future__ import annotations
 
 from pathlib import Path

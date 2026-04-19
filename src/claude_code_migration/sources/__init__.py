@@ -1,7 +1,8 @@
-"""Sources: platform → CanonicalData IR.
+"""Sources: platform → Workspace Dossier (CanonicalData).
 
-Each source module exposes `parse(...)` that returns a CanonicalData instance.
-Add a new source by dropping a module in here with a parse() function.
+Each source module exposes `parse(...)` that returns a CanonicalData instance
+(aka Workspace Dossier). Add a new source by dropping a module in here with a
+parse() function and registering it in the SOURCES table below.
 """
 from .claude_code import parse as parse_claude_code
 from .claude_chat_zip import parse as parse_claude_chat_zip

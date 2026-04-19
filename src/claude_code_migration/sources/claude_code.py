@@ -1,7 +1,7 @@
-"""Claude Code source → IR.
+"""Claude Code source → Workspace Dossier.
 
-Wraps the existing rich scanner (scanner.py scans 47+ data types) and
-projects its output into CanonicalData.
+Wraps the rich scanner (scanner.py scans 60+ data types) and projects its
+output into a CanonicalData instance (the Workspace Dossier).
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def _extract_text(content: Any) -> str:
 def parse(project_dir: str | Path | None = None,
           include_sessions: bool = False,
           **kwargs: Any) -> CanonicalData:
-    """Scan local Claude Code data + wrap as IR."""
+    """Scan local Claude Code data + wrap as a Workspace Dossier."""
     scan = scan_claude_code(project_dir=project_dir, include_sessions=include_sessions, **kwargs)
     d = scan.to_dict()
 

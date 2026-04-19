@@ -1,4 +1,4 @@
-"""OpenCode → IR.
+"""OpenCode → Workspace Dossier.
 
 Reads:
 - ~/.config/opencode/opencode.json       (global config with model + mcp + provider)
