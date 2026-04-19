@@ -3,9 +3,10 @@
 > Python 工具集 + Claude Code Skills，把 Claude Code / Chat / Cowork 的本地数据迁到 Hermes / OpenCode / Cursor / Windsurf / neuDrive Hub
 
 [![package](https://img.shields.io/badge/package-v0.2.0-blue)](./pyproject.toml)
-[![tests](https://img.shields.io/badge/tests-56%20passing-brightgreen)](./tests/)
+[![tests](https://img.shields.io/badge/tests-88%20passing-brightgreen)](./tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](./pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
+[![changelog](https://img.shields.io/badge/changelog-keepachangelog-brightgreen)](./CHANGELOG.md)
 
 ---
 
