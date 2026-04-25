@@ -249,6 +249,30 @@ def parse(project_dir: str | Path | None = None,
         "worktreeinclude": d.get("worktreeinclude") or [],
     }
 
+    # Slash commands, themes, keybindings, plugin bin/ — 2026 spec coverage.
+    # Same archival philosophy as the CLAUDE.md tree: keep verbatim under
+    # _archive/, since target agents have different equivalents (or none).
+    claude_extras: dict[str, Any] = {}
+    if d.get("commands_global"):
+        claude_extras["commands_global"] = d["commands_global"]
+    if d.get("commands_project"):
+        claude_extras["commands_project"] = d["commands_project"]
+    if d.get("plugins_commands"):
+        claude_extras["plugins_commands"] = d["plugins_commands"]
+    if d.get("themes"):
+        claude_extras["themes"] = d["themes"]
+    if d.get("keybindings"):
+        claude_extras["keybindings"] = d["keybindings"]
+    # Plugin bin/ + bundled commands/agents are summary fields on each plugin
+    # entry; preserved already via d["plugins"]. We surface the existence here
+    # for adapter discovery convenience.
+    plugins_with_bin = [p for p in (d.get("plugins") or []) if p.get("bin_files")]
+    if plugins_with_bin:
+        claude_extras["plugins_with_bin"] = [
+            {"id": p["id"], "bin_files": p["bin_files"], "install_path": p["install_path"]}
+            for p in plugins_with_bin
+        ]
+
     # CLAUDE.md discovery tree — 2026 spec expansion (alt project loc, ancestors,
     # subdirs, @imports, managed policy). These live in raw_archive so target
     # adapters can archive them verbatim under _archive/claude-md-tree/ without
@@ -281,6 +305,7 @@ def parse(project_dir: str | Path | None = None,
         "file_history": d.get("file_history") or [],
         "mcp_needs_auth": d.get("mcp_needs_auth") or {},
         "claude_md_tree": claude_md_tree,
+        "claude_extras": claude_extras,
         # Session sidecars aren't fully captured by conversations (tool-results map
         # + subagent transcripts are needed to fully reconstruct tool-call chains).
         "session_sidecars": [

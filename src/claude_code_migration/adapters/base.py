@@ -179,6 +179,93 @@ def write_archive(
         idx.write_text("\n".join(tree_index) + "\n", encoding="utf-8")
         written.append(str(idx))
 
+    # Custom slash commands, themes, keybindings, plugin bin/ — Claude Code
+    # surface area without 1:1 equivalents in most targets. Archive verbatim
+    # so the user can hand-port the ones they actually use.
+    extras = scan.get("claude_extras") or {}
+    if extras:
+        ex_dir = ensure_dir(archive / "claude-extras")
+        ex_index: list[str] = [
+            "# Claude Code Extras (2026 spec)",
+            "",
+            "Surface area beyond the canonical IR — typically with no direct",
+            "equivalent in your target agent. Each bucket below is preserved",
+            "verbatim so you can re-create it manually if needed.",
+            "",
+        ]
+        # Slash commands — write each as a standalone .md so the user can
+        # drop it into their target's command system if it has one.
+        cmd_buckets = [
+            ("commands_global", "global custom slash command"),
+            ("commands_project", "project custom slash command"),
+            ("plugins_commands", "plugin-bundled slash command"),
+        ]
+        for key, label in cmd_buckets:
+            commands = extras.get(key) or []
+            if not commands:
+                continue
+            sub = ensure_dir(ex_dir / key)
+            ex_index.append(f"## {key} ({len(commands)} {label}{'s' if len(commands)!=1 else ''})")
+            ex_index.append("")
+            for c in commands:
+                safe = c["name"].replace(":", "__").replace("/", "__")
+                p = sub / f"{safe}.md"
+                # Reconstruct frontmatter + body so command is self-contained
+                fm_lines = []
+                if c.get("frontmatter"):
+                    fm_lines.append("---")
+                    for k, v in c["frontmatter"].items():
+                        fm_lines.append(f"{k}: {v}")
+                    fm_lines.append("---")
+                    fm_lines.append("")
+                p.write_text("\n".join(fm_lines) + (c.get("body") or ""), encoding="utf-8")
+                written.append(str(p))
+                ex_index.append(f"- `{key}/{p.name}` — `/{c['name']}` (from `{c['path']}`)")
+            ex_index.append("")
+        # Themes — verbatim copy
+        themes = extras.get("themes") or []
+        if themes:
+            t_sub = ensure_dir(ex_dir / "themes")
+            ex_index.append(f"## themes ({len(themes)} files)")
+            ex_index.append("")
+            for t in themes:
+                safe = t["file"].replace("/", "__")
+                p = t_sub / safe
+                p.write_text(t.get("content", ""), encoding="utf-8")
+                written.append(str(p))
+                ex_index.append(f"- `themes/{safe}` — from `{t['path']}`")
+            ex_index.append("")
+        # Keybindings — single JSON
+        kb = extras.get("keybindings")
+        if kb:
+            p = ex_dir / "keybindings.json"
+            p.write_text(json.dumps(kb, indent=2, ensure_ascii=False), encoding="utf-8")
+            written.append(str(p))
+            ex_index.append("## keybindings")
+            ex_index.append("")
+            ex_index.append("- `keybindings.json` — full ~/.claude/keybindings.json (target-specific; "
+                            "most agents have their own keybinding system)")
+            ex_index.append("")
+        # Plugins with bin/ — note the existence; files live under the
+        # original install_path which may or may not be on the migrated
+        # machine.
+        bin_plugins = extras.get("plugins_with_bin") or []
+        if bin_plugins:
+            ex_index.append("## plugins with bin/ (W14 feature)")
+            ex_index.append("")
+            ex_index.append("These plugins ship PATH-injected executables. The Bash tool")
+            ex_index.append("called them as bare commands; in your target agent you'll need")
+            ex_index.append("to either install the plugin natively or copy the binaries onto")
+            ex_index.append("your PATH manually.")
+            ex_index.append("")
+            for bp in bin_plugins:
+                ex_index.append(f"- **{bp['id']}** — `bin/`: {', '.join(bp['bin_files'])}  "
+                                f"(install path: `{bp['install_path']}`)")
+            ex_index.append("")
+        idx_p = ex_dir / "INDEX.md"
+        idx_p.write_text("\n".join(ex_index) + "\n", encoding="utf-8")
+        written.append(str(idx_p))
+
     # Secret manifest (SHA256 hashes only, no raw values — safe to commit)
     try:
         from ..secrets import scan_secrets

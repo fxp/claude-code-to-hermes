@@ -7,6 +7,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 
 ### Added
 
+- **2026 surface area coverage beyond CLAUDE.md** — picks up the rest of
+  `~/.claude/` and per-plugin data documented at
+  <https://code.claude.com/docs/en/claude-directory>:
+  - **Slash commands** — `~/.claude/commands/**/*.md` and
+    `<proj>/.claude/commands/**/*.md`. Subdirectories namespace commands
+    (e.g. `frontend/test.md` → `/frontend:test`). Frontmatter fields
+    `description` / `allowed-tools` / `argument-hint` are surfaced
+    explicitly for adapter convenience.
+  - **Themes** — `~/.claude/themes/*` captured verbatim (file format
+    intentionally unspecified by the spec).
+  - **Keybindings** — `~/.claude/keybindings.json` preserved as-is.
+  - **Plugin `bin/` executables** (Week 14, v2.1.91) — files inside a
+    plugin's `bin/` directory are PATH-injected by Claude Code while
+    the plugin is enabled. Captured per-plugin so target users know
+    what binaries the agent expected on PATH.
+  - **Plugin-bundled commands** — `<plugin>/commands/**/*.md` (prefixed
+    with plugin name).
+  - **Plugin-bundled agents** — `<plugin>/agents/*.md` (prefixed with
+    plugin name).
+- **Adapter `_archive/claude-extras/`** — every captured bucket lands as
+  a readable file with reconstructed frontmatter so a user can hand-port
+  individual commands/themes/bindings into a target agent that has an
+  equivalent. `INDEX.md` lists each artifact and its origin.
+- 7 new tests in `tests/test_claude_extras.py` covering namespacing, prefix
+  injection, plugin `bin/`, end-to-end scan into a fake CLAUDE_CONFIG_DIR,
+  and adapter archive output. Suite: 136 → 143 passing.
+
 - **2026 CLAUDE.md discovery spec coverage** — scanner now matches the load
   semantics documented at <https://code.claude.com/docs/en/memory>:
   - `./.claude/CLAUDE.md` — alternate project-level location (was silently

@@ -117,6 +117,31 @@ class SkillDef:
 
 
 @dataclass
+class CommandDef:
+    """A custom slash command — `~/.claude/commands/<ns>/<name>.md` or
+    project `.claude/commands/...`. Subdirectories namespace the command
+    (e.g. `frontend/test.md` is invoked as `/frontend:test`).
+    Per Claude Code 2026 spec: same mechanism as skills, kept for legacy.
+    """
+    name: str            # canonical slash name including namespace, e.g. "frontend:test"
+    path: str
+    body: str
+    frontmatter: dict[str, Any] = field(default_factory=dict)
+    # Common frontmatter fields surfaced for adapter convenience:
+    description: str = ""
+    allowed_tools: list[str] = field(default_factory=list)
+    argument_hint: str = ""
+
+
+@dataclass
+class ThemeFile:
+    """A file inside `~/.claude/themes/` (custom user theme)."""
+    file: str            # relative to themes/
+    path: str
+    content: str
+
+
+@dataclass
 class McpServer:
     name: str
     transport: str  # "http" | "stdio"
@@ -150,6 +175,12 @@ class PluginInstall:
     mcp_servers: dict[str, McpServer] = field(default_factory=dict)
     # Bundled skills from <plugin>/skills/*/SKILL.md (name only, full body in skills_from_plugins)
     skill_names: list[str] = field(default_factory=list)
+    # Plugin-bundled executables (W14 spec: `<plugin>/bin/*` joins PATH while plugin enabled)
+    bin_files: list[str] = field(default_factory=list)
+    # Plugin-bundled custom slash commands (`<plugin>/commands/**/*.md`)
+    command_names: list[str] = field(default_factory=list)
+    # Plugin-bundled custom subagents (`<plugin>/agents/*.md`)
+    agent_names: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -245,6 +276,15 @@ class ClaudeScan:
     # Enterprise managed-policy CLAUDE.md (OS-specific path, cannot be excluded)
     managed_claude_md: str | None = None
     managed_claude_md_path: str | None = None
+    # Custom slash commands (`~/.claude/commands/` and `<proj>/.claude/commands/`)
+    commands_global: list[CommandDef] = field(default_factory=list)
+    commands_project: list[CommandDef] = field(default_factory=list)
+    # Plugin-bundled commands — full bodies (PluginInstall.command_names is summary-only)
+    plugins_commands: list[CommandDef] = field(default_factory=list)
+    # User themes (`~/.claude/themes/`)
+    themes: list[ThemeFile] = field(default_factory=list)
+    # User keybindings (`~/.claude/keybindings.json`)
+    keybindings: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         # Convert McpServer objects in dicts
@@ -459,6 +499,61 @@ def _scan_skill_dir(base: Path, name: str) -> SkillDef | None:
     )
 
 
+def _scan_commands_dir(base: Path, prefix: str = "") -> list[CommandDef]:
+    """Recursively walk a `commands/` directory.
+
+    Subdirectories namespace commands per Claude Code spec — `frontend/test.md`
+    becomes `/frontend:test`. Frontmatter fields `description`, `allowed-tools`,
+    and `argument-hint` are surfaced explicitly; the rest stays in `frontmatter`.
+    """
+    out: list[CommandDef] = []
+    if not base.is_dir():
+        return out
+    for f in sorted(base.rglob("*.md")):
+        if not f.is_file() or f.name.startswith("."):
+            continue
+        rel = f.relative_to(base)
+        # Build namespaced name: foo/bar/baz.md → "foo:bar:baz"
+        parts = list(rel.with_suffix("").parts)
+        ns_name = ":".join(parts)
+        if prefix:
+            ns_name = f"{prefix}:{ns_name}"
+        text = _read_safe(f) or ""
+        meta, body = _parse_frontmatter(text)
+        allowed = meta.get("allowed-tools") or meta.get("allowedTools") or []
+        if isinstance(allowed, str):
+            # Frontmatter scalar can be a comma-separated string
+            allowed = [t.strip() for t in allowed.split(",") if t.strip()]
+        out.append(CommandDef(
+            name=ns_name,
+            path=str(f),
+            body=body,
+            frontmatter=meta,
+            description=str(meta.get("description", "")),
+            allowed_tools=list(allowed),
+            argument_hint=str(meta.get("argument-hint", "") or meta.get("argumentHint", "")),
+        ))
+    return out
+
+
+def _scan_themes_dir(base: Path) -> list[ThemeFile]:
+    """Read every file inside `~/.claude/themes/` (file format is unspecified
+    in the spec; we capture it verbatim so a theme survives migration even if
+    its format changes)."""
+    out: list[ThemeFile] = []
+    if not base.is_dir():
+        return out
+    for f in sorted(base.rglob("*")):
+        if not f.is_file() or f.name.startswith("."):
+            continue
+        out.append(ThemeFile(
+            file=str(f.relative_to(base)),
+            path=str(f),
+            content=_read_safe(f) or "",
+        ))
+    return out
+
+
 def _scan_memory_dir(directory: Path) -> list[MemoryFile]:
     out: list[MemoryFile] = []
     if not directory.is_dir():
@@ -665,6 +760,19 @@ def scan_claude_code(
                 if skill:
                     scan.skills_global.append(skill)
 
+    # Global custom slash commands (~/.claude/commands/**/*.md)
+    scan.commands_global = _scan_commands_dir(claude_home / "commands")
+
+    # Themes (~/.claude/themes/)
+    scan.themes = _scan_themes_dir(claude_home / "themes")
+
+    # Keybindings (~/.claude/keybindings.json)
+    kb_file = claude_home / "keybindings.json"
+    if kb_file.is_file():
+        loaded = _load_json_safe(kb_file)
+        if loaded:
+            scan.keybindings = loaded
+
     # Global agents
     global_agents_dir = claude_home / "agents"
     if global_agents_dir.is_dir():
@@ -747,6 +855,9 @@ def scan_claude_code(
                         skill = _scan_skill_dir(sub, sub.name)
                         if skill:
                             scan.skills_project.append(skill)
+
+        # Project custom slash commands (<proj>/.claude/commands/**/*.md)
+        scan.commands_project = _scan_commands_dir(proj / ".claude" / "commands")
 
         # Project agents
         proj_agents = proj / ".claude" / "agents"
@@ -888,6 +999,36 @@ def _scan_plugins(plugins_dir: Path, scan: ClaudeScan) -> None:
                             if s:
                                 p.skill_names.append(s.name)
                                 scan.plugins_skills.append(s)
+
+                # Plugin-bundled bin/ executables (W14: PATH-injected while plugin enabled)
+                bin_dir = install_path / "bin"
+                if bin_dir.is_dir():
+                    for f in bin_dir.iterdir():
+                        if f.is_file() and not f.name.startswith("."):
+                            p.bin_files.append(str(f.relative_to(install_path)))
+
+                # Plugin-bundled custom slash commands
+                cmds = _scan_commands_dir(install_path / "commands", prefix=plugin_name)
+                for c in cmds:
+                    p.command_names.append(c.name)
+                    scan.plugins_commands.append(c)
+
+                # Plugin-bundled custom subagents
+                pa_dir = install_path / "agents"
+                if pa_dir.is_dir():
+                    for f in pa_dir.glob("*.md"):
+                        text = _read_safe(f) or ""
+                        meta, body = _parse_frontmatter(text)
+                        agent_name = f"{plugin_name}:{meta.get('name', f.stem)}"
+                        scan.agents.append(AgentDef(
+                            name=agent_name,
+                            path=str(f),
+                            description=str(meta.get("description", "")),
+                            model=meta.get("model"),
+                            color=meta.get("color"),
+                            instructions=body,
+                        ))
+                        p.agent_names.append(agent_name)
 
             scan.plugins.append(p)
 
