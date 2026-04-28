@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>先备份，再迁移 · claude-code-migration</title>
+<meta name="description" content="60+ 种数据类型、N+M 架构、Workspace Dossier — 一份属于你自己的 Claude 工作档案。">
+<meta property="og:title" content="先备份，再迁移">
+<meta property="og:description" content="一份属于你自己的、厂商中立的 Claude 工作档案。Agent 锁定不是 LLM 时代的必然。">
+<meta property="og:type" content="article">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --paper: #ede4cd;
+    --paper-deep: #e3d8bb;
+    --paper-soft: #f3ecd8;
+    --ink: #1a1815;
+    --ink-warm: #2b261e;
+    --ink-mute: #5b554a;
+    --ink-faint: rgba(26, 24, 21, 0.18);
+    --rule: rgba(26, 24, 21, 0.22);
+    --rule-soft: rgba(26, 24, 21, 0.08);
+    --oxblood: #76262b;
+    --oxblood-soft: rgba(118, 38, 43, 0.08);
+    --forest: #3a4a36;
+    --stamp: #c79231;
+    --serif-display: "Cormorant Garamond", "Songti SC", serif;
+    --serif-body: "Spectral", "Source Han Serif SC", "Songti SC", serif;
+    --mono: "DM Mono", "SF Mono", Menlo, ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif-body);
+    font-size: 18px;
+    line-height: 1.7;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern", "liga", "calt", "ss01";
+  }
+
+  /* Paper grain — fine SVG noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='280' height='280'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.10  0 0 0 0 0.10  0 0 0 0 0.08  0 0 0 0.18 0'/></filter><rect width='280' height='280' filter='url(%23n)'/></svg>");
+    opacity: 0.55;
+    mix-blend-mode: multiply;
+    z-index: 1;
+  }
+
+  /* Vertical ledger rule down the left side */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; bottom: 0;
+    left: calc((100vw - min(880px, 100vw - 80px)) / 2 + 16px);
+    width: 1px;
+    background: var(--rule);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  ::selection { background: var(--stamp); color: var(--ink); }
+
+  a {
+    color: var(--oxblood);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 0.5px;
+    text-decoration-color: rgba(118, 38, 43, 0.4);
+    transition: text-decoration-color 200ms;
+  }
+  a:hover { text-decoration-color: var(--oxblood); }
+
+  code, pre, .mono { font-family: var(--mono); font-feature-settings: "ss01"; }
+  code { font-size: 0.9em; color: var(--ink-warm); background: var(--paper-deep); padding: 1px 6px; border-radius: 1px; }
+  pre {
+    font-size: 14px;
+    line-height: 1.7;
+    background: var(--paper-soft);
+    border-left: 2px solid var(--oxblood);
+    padding: 22px 26px;
+    overflow-x: auto;
+    margin: 24px 0;
+  }
+  pre code { background: transparent; padding: 0; color: var(--ink); }
+
+  em, i { font-style: italic; }
+  strong, b { font-weight: 500; color: var(--ink); }
+
+  /* ────────────────────────────────────────────────────────────
+     Layout
+     ────────────────────────────────────────────────────────────*/
+
+  .container {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0 80px;
+    position: relative;
+    z-index: 2;
+  }
+  @media (max-width: 720px) {
+    .container { padding: 0 32px; }
+    body::after { left: 32px; }
+  }
+
+  /* ── Top masthead ──────────────────────────────────────────── */
+  .masthead {
+    border-bottom: 1px solid var(--rule);
+    padding: 22px 0 18px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .masthead .vol { color: var(--oxblood); font-weight: 500; }
+  .masthead .right { font-style: italic; text-transform: none; letter-spacing: 0.04em; font-family: var(--serif-body); font-size: 13px; }
+
+  /* ── Hero ──────────────────────────────────────────────────── */
+  .hero {
+    padding: 110px 0 90px;
+    position: relative;
+  }
+  .hero .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--oxblood);
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .hero .eyebrow::before {
+    content: ''; display: inline-block;
+    width: 30px; height: 1px; background: var(--oxblood);
+  }
+  .hero h1 {
+    font-family: var(--serif-display);
+    font-weight: 500;
+    font-size: clamp(56px, 9vw, 132px);
+    line-height: 0.92;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+    margin-bottom: 32px;
+  }
+  .hero h1 .it {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--oxblood);
+  }
+  .hero .dek {
+    font-size: 22px;
+    line-height: 1.55;
+    font-weight: 300;
+    color: var(--ink-warm);
+    max-width: 600px;
+    margin-bottom: 56px;
+    font-style: italic;
+  }
+  .hero .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 36px 48px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    padding-top: 28px;
+    border-top: 1px solid var(--rule);
+  }
+  .hero .meta .label { display: block; color: var(--ink-faint); margin-bottom: 5px; font-size: 10px; }
+  .hero .meta .val { color: var(--ink); font-size: 13px; letter-spacing: 0.08em; }
+
+  /* ── Lead / epigraph ───────────────────────────────────────── */
+  .lead {
+    padding: 80px 0 60px;
+    font-family: var(--serif-body);
+    font-size: 24px;
+    line-height: 1.6;
+    font-weight: 300;
+    color: var(--ink-warm);
+    border-bottom: 1px dashed var(--rule);
+  }
+  .lead::first-letter {
+    font-family: var(--serif-display);
+    font-size: 96px;
+    font-weight: 600;
+    line-height: 0.8;
+    float: left;
+    margin: 8px 14px -2px 0;
+    color: var(--oxblood);
+    font-style: italic;
+  }
+
+  /* ── Chapter divider ──────────────────────────────────────── */
+  .chapter {
+    padding: 90px 0 16px;
+    display: flex;
+    align-items: baseline;
+    gap: 28px;
+    margin-bottom: 24px;
+  }
+  .chapter .num {
+    font-family: var(--serif-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 84px;
+    line-height: 1;
+    color: var(--oxblood);
+    letter-spacing: -0.02em;
+    min-width: 90px;
+  }
+  .chapter .label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin-bottom: 2px;
+  }
+  .chapter h2 {
+    font-family: var(--serif-display);
+    font-weight: 500;
+    font-size: clamp(34px, 4.5vw, 52px);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+  .chapter h2 .it { font-style: italic; font-weight: 400; }
+
+  section.body p {
+    margin: 0 0 24px;
+    color: var(--ink);
+    font-size: 18px;
+    line-height: 1.78;
+  }
+  section.body p.first::first-letter {
+    font-family: var(--serif-display);
+    font-size: 64px;
+    font-weight: 600;
+    line-height: 0.85;
+    float: left;
+    margin: 6px 12px -4px 0;
+    color: var(--ink);
+  }
+
+  /* Pull quote breaking into left margin */
+  .pull {
+    font-family: var(--serif-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 32px;
+    line-height: 1.3;
+    color: var(--oxblood);
+    margin: 36px 0 36px -56px;
+    padding-left: 24px;
+    border-left: 2px solid var(--oxblood);
+  }
+  @media (max-width: 720px) { .pull { margin-left: 0; font-size: 26px; } }
+
+  /* Inline list of "60+ types" — flowing, comma-separated, italic */
+  .enum {
+    font-family: var(--serif-body);
+    font-style: italic;
+    color: var(--ink-warm);
+    font-size: 18px;
+    line-height: 1.85;
+    margin: 14px 0 30px;
+  }
+  .enum strong { color: var(--oxblood); font-weight: 500; font-style: normal; }
+
+  /* Architecture schematic — drawn as a refined ASCII */
+  .schema {
+    background: var(--paper-soft);
+    border: 1px solid var(--rule);
+    padding: 32px 28px;
+    margin: 32px 0;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--ink-warm);
+    position: relative;
+  }
+  .schema::before {
+    content: 'FIG. A — N+M VIA WORKSPACE DOSSIER';
+    position: absolute;
+    top: -10px; left: 24px;
+    background: var(--paper);
+    padding: 0 10px;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--ink-mute);
+  }
+  .schema .accent { color: var(--oxblood); font-weight: 500; }
+
+  /* Three steps — catalog cards */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    margin: 36px 0 28px;
+    border-top: 2px solid var(--ink);
+    border-bottom: 2px solid var(--ink);
+  }
+  .steps .step {
+    padding: 30px 26px 32px;
+    border-right: 1px solid var(--rule);
+    position: relative;
+  }
+  .steps .step:last-child { border-right: none; }
+  .steps .step .n {
+    font-family: var(--serif-display);
+    font-style: italic;
+    font-size: 56px;
+    line-height: 1;
+    color: var(--oxblood);
+    margin-bottom: 18px;
+    display: block;
+  }
+  .steps .step .verb {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin-bottom: 8px;
+  }
+  .steps .step h3 {
+    font-family: var(--serif-display);
+    font-weight: 500;
+    font-size: 26px;
+    line-height: 1.15;
+    margin-bottom: 14px;
+    color: var(--ink);
+  }
+  .steps .step p {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-mute);
+    margin-bottom: 14px;
+  }
+  .steps .step .cmd {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--paper-deep);
+    padding: 8px 10px;
+    display: block;
+    overflow-x: auto;
+    border-left: 2px solid var(--oxblood);
+  }
+  @media (max-width: 720px) {
+    .steps { grid-template-columns: 1fr; }
+    .steps .step { border-right: none; border-bottom: 1px solid var(--rule); }
+    .steps .step:last-child { border-bottom: none; }
+  }
+
+  /* Security checklist */
+  .checks {
+    list-style: none;
+    margin: 22px 0 28px;
+    padding: 0;
+  }
+  .checks li {
+    padding: 16px 0 16px 38px;
+    border-bottom: 1px dashed var(--rule);
+    position: relative;
+    font-size: 17px;
+    line-height: 1.6;
+  }
+  .checks li:last-child { border-bottom: none; }
+  .checks li::before {
+    content: '✓';
+    position: absolute;
+    left: 0; top: 18px;
+    font-family: var(--serif-display);
+    font-style: italic;
+    color: var(--oxblood);
+    font-size: 22px;
+    line-height: 1;
+  }
+  .checks li strong {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: var(--oxblood);
+    font-weight: 500;
+  }
+
+  /* 2026 spec rounds — two parallel columns */
+  .rounds {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    margin: 36px 0 24px;
+    border-top: 2px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+  }
+  .rounds .round {
+    padding: 28px 28px 32px;
+    border-right: 1px solid var(--rule);
+  }
+  .rounds .round:last-child { border-right: none; }
+  .rounds .round h4 {
+    font-family: var(--serif-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 26px;
+    color: var(--oxblood);
+    margin-bottom: 14px;
+  }
+  .rounds .round h4 .tag {
+    font-family: var(--mono);
+    font-style: normal;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--ink-mute);
+    display: block;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+  .rounds ul { list-style: none; padding: 0; }
+  .rounds li {
+    padding: 8px 0;
+    font-size: 15.5px;
+    line-height: 1.55;
+    color: var(--ink-warm);
+    border-bottom: 1px dotted var(--rule-soft);
+  }
+  .rounds li:last-child { border-bottom: none; }
+  .rounds li code { font-size: 12px; }
+  @media (max-width: 720px) {
+    .rounds { grid-template-columns: 1fr; }
+    .rounds .round { border-right: none; border-bottom: 1px solid var(--rule); }
+  }
+
+  /* Manifesto block */
+  .manifesto {
+    padding: 60px 0 40px;
+    border-top: 4px double var(--ink);
+    border-bottom: 4px double var(--ink);
+    margin: 60px 0 40px;
+    text-align: center;
+  }
+  .manifesto p {
+    font-family: var(--serif-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(28px, 4vw, 42px);
+    line-height: 1.35;
+    color: var(--ink);
+    margin: 0 auto 18px;
+    max-width: 680px;
+  }
+  .manifesto p.kicker {
+    font-style: normal;
+    font-weight: 500;
+    color: var(--oxblood);
+  }
+  .manifesto .sig {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: var(--ink-mute);
+    text-transform: uppercase;
+    margin-top: 32px;
+  }
+
+  /* CTA — "rubber stamp" feel */
+  .cta-row {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin: 48px 0 32px;
+  }
+  .stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 26px;
+    border: 1.5px solid var(--ink);
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition: all 220ms;
+    position: relative;
+  }
+  .stamp:hover {
+    background: var(--ink);
+    color: var(--paper);
+    transform: translate(-2px, -2px);
+    box-shadow: 4px 4px 0 var(--oxblood);
+  }
+  .stamp.primary {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .stamp.primary:hover {
+    background: var(--oxblood);
+    border-color: var(--oxblood);
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+
+  /* Footer */
+  footer {
+    border-top: 1px solid var(--rule);
+    padding: 48px 0 60px;
+    margin-top: 80px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-mute);
+    letter-spacing: 0.06em;
+  }
+  footer .row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  footer .colophon {
+    margin-top: 24px;
+    font-family: var(--serif-body);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--ink-faint);
+    line-height: 1.6;
+  }
+
+  /* Round seal — decorative archive stamp */
+  .seal {
+    position: absolute;
+    right: -40px; top: 70px;
+    width: 120px; height: 120px;
+    border: 1.5px solid var(--oxblood);
+    border-radius: 50%;
+    color: var(--oxblood);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    transform: rotate(-12deg);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  .seal::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 0.5px dashed var(--oxblood);
+    border-radius: 50%;
+  }
+  .seal .inner { padding: 0 14px; line-height: 1.4; }
+  @media (max-width: 900px) { .seal { display: none; } }
+
+  /* Entrance animation */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero .eyebrow,
+  .hero h1,
+  .hero .dek,
+  .hero .meta {
+    animation: fadeUp 800ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+  .hero .eyebrow { animation-delay: 80ms; }
+  .hero h1       { animation-delay: 200ms; }
+  .hero .dek     { animation-delay: 480ms; }
+  .hero .meta    { animation-delay: 720ms; }
+
+  /* Reduce motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Masthead -->
+  <div class="masthead">
+    <span><span class="vol">VOL. I</span> &nbsp;·&nbsp; FOLIO N°60+ &nbsp;·&nbsp; 2026.04.20</span>
+    <span class="right">a working note on agent sovereignty</span>
+  </div>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="eyebrow">CLAUDE-CODE-MIGRATION · AN ARCHIVAL TOOL</div>
+    <h1>先备份，<br><span class="it">再迁移。</span></h1>
+    <p class="dek">
+      你和 Claude 共同积累的工作记忆——CLAUDE.md、custom agents、技能、会话、MCP 配置——值得有一份属于你自己的、厂商中立的档案。
+    </p>
+    <div class="meta">
+      <div><span class="label">DATA TYPES</span><span class="val">60+</span></div>
+      <div><span class="label">SOURCES</span><span class="val">7</span></div>
+      <div><span class="label">TARGETS</span><span class="val">4</span></div>
+      <div><span class="label">TESTS</span><span class="val">184 ✓</span></div>
+      <div><span class="label">LICENSE</span><span class="val">MIT</span></div>
+    </div>
+
+    <div class="seal" aria-hidden="true">
+      <span class="inner">
+        VENDOR<br>NEUTRAL<br>★★★<br>YOURS
+      </span>
+    </div>
+  </section>
+
+  <!-- Lead / drop cap -->
+  <section class="lead">
+    打开你的 <code>~/.claude/</code>，数一数那里到底有什么。CLAUDE.md、自定义 agents、自己写的 skills、hooks、MCP 配置、scheduled-tasks、output-styles、自定义 slash 命令、主题、键位绑定、所有 session 的 JSONL 历史、子 agent 嵌套对话、tool-result 缓存、shell 快照、file-history 撤销栈、每个项目的 trust 状态和 token 计数、Cowork plugin 清单、企业 managed-policy CLAUDE.md……我做了一遍清点，<strong>60+ 种数据类型</strong>。
+  </section>
+
+  <!-- §01 Problem -->
+  <section class="body">
+    <div class="chapter">
+      <div class="num">§01</div>
+      <div>
+        <div class="label">THE PROBLEM</div>
+        <h2>资产，比你以为的<span class="it">多得多</span></h2>
+      </div>
+    </div>
+
+    <p class="first">
+      这些数据是你和 Claude 之间的工作语言。它们让 Claude 知道你的代码风格、团队的术语、你昨天告诉它"这个测试不要再忘了跑"。它们不是配置，是<em>记忆</em>。
+    </p>
+
+    <p>
+      风控收紧的时候，你要么换号、要么换 agent。换 agent 这条路上，绝大多数迁移工具只搬 CLAUDE.md——其他全部静默丢失。会话内容、子 agent 轨迹、tool-result 侧车、shell 快照、企业策略 CLAUDE.md、<code>.claude/commands/</code> 里你自己写的 slash 命令……这些是你真正用得上的东西。
+    </p>
+
+    <p class="pull">
+      不是配置，是记忆。<br>
+      不是文件，是工作语言。
+    </p>
+
+    <p>
+      <a href="https://github.com/fxp/claude-code-migration"><strong>claude-code-migration</strong></a> 想解决的事，就是让这些资产在迁移时活下来。
+    </p>
+  </section>
+
+  <!-- §02 Architecture -->
+  <section class="body">
+    <div class="chapter">
+      <div class="num">§02</div>
+      <div>
+        <div class="label">ARCHITECTURE</div>
+        <h2>不是点对点，<span class="it">是中间层</span></h2>
+      </div>
+    </div>
+
+    <p>
+      Claude Code、Cursor、OpenCode、Hermes Agent、Windsurf——每个 agent 有自己的本地数据格式。如果做点对点迁移，<em>N</em> 个源 × <em>M</em> 个目标 = <em>N×M</em> 个适配器。新增一个平台就要写 N+M 个新对子。
+    </p>
+
+    <p>
+      我们做了 <strong>N+M</strong>：所有源 → 一个中间表示（Workspace Dossier；代码里叫 <code>CanonicalData</code>）→ 所有目标。
+    </p>
+
+    <pre class="schema"><span class="accent">SOURCES</span> (N)              <span class="accent">WORKSPACE DOSSIER</span         <span class="accent">TARGETS</span> (M)
+─────────────             ─────────────────             ─────────────
+💻 Claude Code      ┐                                   ┌  🔱 Hermes
+💬 Claude.ai Chat   │     ┌──────────────────┐          │  ◇ OpenCode
+👥 Claude Cowork    ├─→─→ │   dossier.json   │ →─→─→─→──┤  ✎ Cursor
+✎ Cursor            │     │  vendor-neutral  │          │  ⚡ Windsurf
+◇ OpenCode          │     │  redacted, 0o600 │          │  🔱 neuDrive Hub
+🔱 Hermes           │     │  belongs to you  │          │  (任意新平台)
+⚡ Windsurf         ┘     └──────────────────┘          ┘</pre>
+
+    <p>
+      <code>dossier.json</code> 是<strong>你拥有的</strong>：纯 JSON、可 diff、可 commit、可加密备份。哪天再想换 agent，再 apply 一次就行。它不绑任何厂商。
+    </p>
+
+    <p>
+      新加一个 Agent 平台，<em>只需要写一个 parser 或 writer</em>，自动获得它和其他所有 Agent 的互通能力。
+    </p>
+  </section>
+
+  <!-- §03 Three Steps -->
+  <section class="body">
+    <div class="chapter">
+      <div class="num">§03</div>
+      <div>
+        <div class="label">THREE STEPS</div>
+        <h2>对齐你的<span class="it">心智模型</span></h2>
+      </div>
+    </div>
+
+    <p>三步——指项目、导出档案、生成目标。每一步都是独立的命令，每一步都有可审计的产出。</p>
+
+    <div class="steps">
+      <div class="step">
+        <span class="n">i.</span>
+        <div class="verb">point</div>
+        <h3>告诉工具<br>项目在哪</h3>
+        <p>给它一个 <code>--project</code> 路径。工具会自动定位 Claude 本地数据，包括项目 <code>.claude/</code> 和 <code>~/.claude/</code>。</p>
+        <span class="cmd">--project /path/to/proj</span>
+      </div>
+      <div class="step">
+        <span class="n">ii.</span>
+        <div class="verb">export</div>
+        <h3>识别+导出为<br>Workspace Dossier</h3>
+        <p>扫描 60+ 种数据类型、归一到 <code>CanonicalData</code>、敏感数据自动 redact、写到磁盘 0o600 权限。</p>
+        <span class="cmd">ccm export --out dossier.json</span>
+      </div>
+      <div class="step">
+        <span class="n">iii.</span>
+        <div class="verb">apply</div>
+        <h3>生成<br>目标 Agent 项目</h3>
+        <p>同一份档案，反复 apply 到不同 target。换 agent 不必重扫——大项目的 session JSONL 常常几十 MB。</p>
+        <span class="cmd">ccm apply --target hermes</span>
+      </div>
+    </div>
+
+    <p>
+      想一把梭？
+      <code>ccm migrate --project . --target hermes,opencode,cursor,windsurf</code>
+      把 <em>export + apply</em> 串起来。
+    </p>
+  </section>
+
+  <!-- §04 Security -->
+  <section class="body">
+    <div class="chapter">
+      <div class="num">§04</div>
+      <div>
+        <div class="label">SAFETY DEFAULTS</div>
+        <h2>安全是默认，<span class="it">不是选项</span></h2>
+      </div>
+    </div>
+
+    <p><code>dossier.json</code> 写盘自动完成下面这些事。每一项都是默认行为，不需要你打开开关。</p>
+
+    <ul class="checks">
+      <li>
+        <strong>明文密钥 redact</strong> — MCP headers 里的 Bearer、<code>*_API_KEY</code>、会话正文里粘贴的 <code>sk-ant-*</code> / <code>ghp_*</code> / <code>AKIA*</code> / PEM 私钥 / BigModel <code>32hex.16alnum</code> 全替换成 <code>${CC_&lt;PATH&gt;}</code> 占位符。adapter 把占位符原样传到目标 config，运行时读 env。
+      </li>
+      <li>
+        <strong>0o600 文件权限</strong> — user-only。共享机器上其他账户 <code>cat</code> 不到。
+      </li>
+      <li>
+        <strong>secrets-manifest 审计文件</strong> — 同目录生成，只含 SHA256 前缀和建议的 env var 名，不含原文。可以审计"这次脱敏了哪些"。
+      </li>
+      <li>
+        <strong>不动你的真实项目</strong> — 默认所有产物先 staging 到 <code>&lt;out&gt;/&lt;target&gt;-target/&lt;name&gt;/</code>，确认无误才用 <code>--in-place</code>，且必须在干净 git 分支上。
+      </li>
+    </ul>
+  </section>
+
+  <!-- §05 2026 Spec -->
+  <section class="body">
+    <div class="chapter">
+      <div class="num">§05</div>
+      <div>
+        <div class="label">SPEC ALIGNMENT</div>
+        <h2>对齐 <span class="it">2026 规格</span></h2>
+      </div>
+    </div>
+
+    <p>
+      Claude Code 的本地数据模型每周都在演化。我们对照<a href="https://code.claude.com/docs/en/memory">官方文档</a>做了两轮覆盖扩展——之前都是<em>静默</em>数据丢失。
+    </p>
+
+    <div class="rounds">
+      <div class="round">
+        <h4><span class="tag">ROUND I</span>CLAUDE.md 的<br>五处加载点</h4>
+        <ul>
+          <li><code>./.claude/CLAUDE.md</code> 项目级替代位置</li>
+          <li>祖先目录全部 CLAUDE.md + CLAUDE.local.md</li>
+          <li>子目录 CLAUDE.md（懒加载）</li>
+          <li><code>@path</code> import 递归展开（≤5 跳）</li>
+          <li>企业 managed-policy（macOS / Linux / Windows）</li>
+        </ul>
+      </div>
+      <div class="round">
+        <h4><span class="tag">ROUND II</span><code>~/.claude/</code> 的<br>剩余表面</h4>
+        <ul>
+          <li><code>commands/**/*.md</code> 自定义 slash 命令</li>
+          <li><code>themes/*</code> 用户主题</li>
+          <li><code>keybindings.json</code></li>
+          <li>Plugin <code>bin/</code> 可执行（W14 新功能）</li>
+          <li>Plugin-bundled commands / agents</li>
+        </ul>
+      </div>
+    </div>
+
+    <p>
+      每个桶<em>不</em>强行翻译成目标 agent 原生格式（Cursor 没主题、Windsurf 没 slash 命令）——而是落到 <code>_archive/claude-md-tree/</code> 和 <code>_archive/claude-extras/</code>，附 <code>INDEX.md</code> 说明每个文件来自哪里。
+    </p>
+
+    <p class="pull">
+      用户决定哪些值得手动 port，<br>哪些丢就丢——但至少不会沉默地丢。
+    </p>
+  </section>
+
+  <!-- §06 Hub -->
+  <section class="body">
+    <div class="chapter">
+      <div class="num">§06</div>
+      <div>
+        <div class="label">ALWAYS-ON</div>
+        <h2>Hub 模式 · <span class="it">v1.1+</span></h2>
+      </div>
+    </div>
+
+    <p>
+      上面的三步是<em>一次性</em>迁移。如果你想让多个 agent 持续共享同一份记忆——Claude Code 改了一段，Cursor 这边马上读得到——v1.1 加了 hub 模式。
+    </p>
+
+<pre><code>pip install 'claude-code-migration[hub]'
+
+ccm hub init                     # 本地 SQLite buffer
+ccm hub serve --remote           # captures → outbox → Supabase
+ccm hub mcp-serve                # 通过 MCP 让任何 agent 读 L4 mirror</code></pre>
+
+    <p>
+      四层架构：<strong>L1+L2 Supabase</strong>（pgvector + tsvector）·
+      <strong>L3 hub-agent 守护进程</strong> ·
+      <strong>L4 SQLite outbox + mirror</strong>。
+      离线优先，captures 毫秒级写进 L4 outbox；redactor 全程过滤每个 capture payload；MCP 暴露 L4 mirror，agent 读取零网络往返。
+    </p>
+  </section>
+
+  <!-- §07 Manifesto -->
+  <section class="manifesto">
+    <p class="kicker">——</p>
+    <p>"换 agent 不丢东西"<br>本身就是个值得长期存在的能力。</p>
+    <p>当你的 dossier 是一份独立的、归你拥有的文件，</p>
+    <p class="kicker">Agent 锁定不是<br>LLM 时代的必然。</p>
+    <p>你每天用什么 agent 是你的事，不是平台的事。</p>
+    <div class="sig">— manifesto, 2026.04 —</div>
+  </section>
+
+  <!-- CTA -->
+  <section class="body">
+    <div class="cta-row">
+      <a class="stamp primary" href="https://github.com/fxp/claude-code-migration">★ &nbsp; Repository</a>
+      <a class="stamp" href="https://fxp.github.io/claude-code-migration/">→ &nbsp; Project Page</a>
+      <a class="stamp" href="https://pypi.org/project/claude-code-migration/">⌘ &nbsp; pip install</a>
+    </div>
+
+<pre><code># 试一下
+pip install claude-code-migration
+ccm export --project . --out dossier.json</code></pre>
+
+    <p>剩下的事，<em>你说了算</em>。</p>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="row">
+      <span>CLAUDE-CODE-MIGRATION · MIT · 2026</span>
+      <span>184 TESTS · 60+ TYPES · N+M ARCHITECTURE</span>
+    </div>
+    <div class="colophon">
+      Set in Cormorant Garamond &amp; Spectral, with DM Mono. Paper grain by SVG turbulence.
+      Composed as an editorial folio because tools that preserve memory deserve to be presented like archives, not landing pages.
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>
