@@ -26,7 +26,7 @@ Hub API (requires `pip install 'claude-code-migration[hub]'`):
 For the CLI, install the package and run `ccm --help`.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 from .canonical import CanonicalData, WorkspaceDossier
 from .cowork import parse_cowork_zip

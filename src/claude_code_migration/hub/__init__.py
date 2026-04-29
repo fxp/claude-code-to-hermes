@@ -19,6 +19,7 @@ Public Python surface (may grow)::
     from claude_code_migration.hub import Redactor      # capture middleware
     from claude_code_migration.hub.captures import Capture  # base class
     from claude_code_migration.hub.daemon import HubDaemon, HubConfig
+    from claude_code_migration.hub.mcp import McpServer, build_default_registry
 
 See `docs/HUB_ARCHITECTURE.md` for the full layered design.
 

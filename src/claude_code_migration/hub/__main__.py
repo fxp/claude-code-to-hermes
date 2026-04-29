@@ -9,6 +9,7 @@ All verbs live under ``ccm hub <verb>``::
     ccm hub migrate        — apply sql/*.sql to your Supabase project
     ccm hub bootstrap      — first-run mirror pull Supabase → L4
     ccm hub drain-once     — flush outbox once, exit
+    ccm hub mcp-serve      — expose L4 mirror as MCP tools (stdio JSON-RPC)
 """
 from __future__ import annotations
 
@@ -69,6 +70,7 @@ def cmd_hub_init(args: argparse.Namespace) -> int:
     print("Next step:")
     print("  ccm hub serve               # in-memory mode, no cloud")
     print("  ccm hub serve --remote      # requires SUPABASE_URL + SUPABASE_SERVICE_KEY env vars")
+    print("  ccm hub mcp-serve           # expose buffer as MCP tools over stdio")
     return 0
 
 
@@ -174,6 +176,48 @@ def cmd_hub_bootstrap(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_hub_mcp_serve(args: argparse.Namespace) -> int:
+    """Expose the L4 mirror over MCP (JSON-RPC stdio).
+
+    Any MCP-capable agent (Claude Code, Cursor, Codex CLI, OpenCode, …)
+    can point at this server to query the user's Workspace Dossier. The
+    server is read-only; writes stay with captures.
+    """
+    from .mcp import McpServer, build_default_registry
+
+    buffer_path = _buffer_path(args)
+    if not buffer_path.exists() and not args.allow_empty:
+        print(
+            f"❌ no buffer at {buffer_path}; run `ccm hub init` (and optionally "
+            f"`ccm hub serve` or `ccm hub bootstrap` to populate it) first.\n"
+            f"   Pass --allow-empty to start anyway against a fresh DB.",
+            file=sys.stderr,
+        )
+        return 2
+
+    buf = LocalBuffer(buffer_path)
+    registry = build_default_registry()
+
+    if args.list:
+        # Non-interactive tool dump — handy for config files.
+        print(json.dumps(registry.to_mcp_list(), indent=2))
+        return 0
+
+    server = McpServer(buf, registry=registry)
+    print(
+        f"[mcp-serve] buffer={buffer_path} · tools={len(registry)} · "
+        f"stdio ready — awaiting JSON-RPC input",
+        file=sys.stderr,
+    )
+    try:
+        server.serve()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        buf.close()
+    return 0
+
+
 def cmd_hub_drain_once(args: argparse.Namespace) -> int:
     buffer_path = _buffer_path(args)
     buf = LocalBuffer(buffer_path)
@@ -214,8 +258,8 @@ def add_hub_subparser(parent_sub: argparse._SubParsersAction) -> None:
             "Hub mode — continuous capture of your Workspace Dossier into a "
             "Supabase-backed data store. Captures stream real-time, an "
             "offline-first SQLite buffer keeps everything working without "
-            "network, and MCP tools (coming soon) let any agent read the "
-            "data back with <1ms latency."
+            "network, and an MCP server (`ccm hub mcp-serve`) lets any "
+            "MCP-capable agent read the data back with <1ms latency."
         ),
     )
     hub.add_argument(
@@ -256,6 +300,24 @@ def add_hub_subparser(parent_sub: argparse._SubParsersAction) -> None:
     bp = sub.add_parser("bootstrap", help="Pull everything from Supabase → L4 mirror")
     bp.add_argument("--remote", action="store_true", default=True)
     bp.set_defaults(func=cmd_hub_bootstrap)
+
+    # mcp-serve
+    mcp = sub.add_parser(
+        "mcp-serve",
+        help="Expose the L4 mirror as MCP tools (stdio JSON-RPC)",
+        description=(
+            "Run a Model Context Protocol server over stdin/stdout. Any MCP "
+            "client (Claude Code, Cursor, Codex CLI, OpenCode, Windsurf) can "
+            "point at this process to query the user's Workspace Dossier — "
+            "memories, skills, agents, conversations, projects, hooks, MCP "
+            "endpoints. Read-only; writes happen through captures."
+        ),
+    )
+    mcp.add_argument("--list", action="store_true",
+                     help="Dump tool list as JSON and exit (no server).")
+    mcp.add_argument("--allow-empty", action="store_true",
+                     help="Start even if the buffer DB has no mirror rows yet.")
+    mcp.set_defaults(func=cmd_hub_mcp_serve)
 
     # drain-once
     dp = sub.add_parser("drain-once", help="Flush the outbox once and exit")

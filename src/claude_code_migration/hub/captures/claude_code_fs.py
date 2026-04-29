@@ -34,11 +34,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# Soft import — keeps the `captures` package importable without the
+# `hub` extra installed. Bare `ccm hub init`, `ccm hub mcp-serve`, and
+# the tool registry should all work with just stdlib + httpx. Only
+# ClaudeCodeFSCapture.start() actually needs watchdog; we raise there.
 try:
     from watchdog.observers import Observer
     from watchdog.events import FileSystemEventHandler
-except ImportError as e:   # pragma: no cover
-    raise RuntimeError("watchdog is required. pip install watchdog") from e
+    _WATCHDOG_AVAILABLE = True
+except ImportError:   # pragma: no cover
+    Observer = None        # type: ignore[assignment,misc]
+    FileSystemEventHandler = object   # type: ignore[assignment,misc]
+    _WATCHDOG_AVAILABLE = False
 
 from .base import Capture, CaptureContext
 
@@ -165,6 +172,11 @@ class ClaudeCodeFSCapture(Capture):
     # ── Lifecycle ──────────────────────────────────────────────
 
     def start(self) -> None:
+        if not _WATCHDOG_AVAILABLE:
+            raise RuntimeError(
+                "watchdog is required for ClaudeCodeFSCapture. "
+                "Install the hub extra: pip install 'claude-code-migration[hub]'"
+            )
         if not self.projects_dir.is_dir():
             print(f"[{self.name}] projects dir missing: {self.projects_dir}",
                   file=sys.stderr)
